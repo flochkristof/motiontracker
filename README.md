@@ -1,1 +1,1 @@
-# Motion-tracking software using OpenCV libary
+# Motion-tracking software with PyQt and OpenCV 
