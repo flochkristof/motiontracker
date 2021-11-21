@@ -1,4 +1,9 @@
 venv
 ball.mp4
 reddot.mp4
+forzoom.mp4
+video.mp4
+images
+*.ui
 __pycache__
+player.py

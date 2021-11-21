@@ -18,18 +18,24 @@ from PyQt5.QtWidgets import (
     QGridLayout,
     QFileDialog,
     QGroupBox,
+    QListWidget,
 )
 import cv2
-from classes import ObjectToTrack, VideoLabel  # TimeInputDialog
+from classes import (
+    ObjectToTrack,
+    VideoLabel,
+    ObjectListWidget,
+    Ruler,
+)  # TimeInputDialog
 from math import floor, ceil
 
 
 class VideoWidget(QWidget):
     def __init__(self):
         super(VideoWidget, self).__init__()
+
         self.camera = None
         self.fps = None
-        self.timer = QTimer()
         self.num_of_frames = 0
         self.x_offset = 0
         self.y_offset = 0
@@ -41,10 +47,13 @@ class VideoWidget(QWidget):
         self.video_height = None
         self.objects_to_track = []
         self.point_tmp = None
-        self.rect_tmp = None  # x0,y0,x1,y1
+        self.rect_tmp = None  # x0, y0, x1, y1
+        self.ruler = Ruler()
+
+        self.timer = QTimer()
         self.timer.setTimerType(Qt.PreciseTimer)
         self.setWindowTitle("VideoWidget")
-        self.setGeometry(100, 100, 1280, 720)  # x,y,w,h
+        self.setGeometry(100, 100, 1280, 720)  # x, y, w, h
         self.initUI()
         self.show()
 
@@ -131,15 +140,29 @@ class VideoWidget(QWidget):
         self.SaveBTN.clicked.connect(self.saveObject)
         self.SaveBTN.setVisible(False)
 
+        self.CancelBTN = QPushButton()
+        self.CancelBTN.setText("Cancel")
+        self.CancelBTN.clicked.connect(self.cancelObject)
+        self.CancelBTN.setVisible(False)
+
         self.PickLayout = QHBoxLayout()
         self.PickLayout.addWidget(self.PickPointBTN)
         self.PickLayout.addWidget(self.PickRectangleBTN)
+
+        # displaying existing objects
+        self.ObjectLWG = ObjectListWidget()
+        self.ObjectLWG.delete.connect(lambda name: self.deleteObject(name))
+        self.ObjectLWG.changeVisibility.connect(
+            lambda name: self.changeObjectDisplay(name)
+        )
 
         self.ObjectsLayout = QVBoxLayout()
         self.ObjectsLayout.addWidget(self.NewObjectBTN)
         self.ObjectsLayout.addWidget(self.NameLNE)
         self.ObjectsLayout.addLayout(self.PickLayout)
         self.ObjectsLayout.addWidget(self.SaveBTN)
+        self.ObjectsLayout.addWidget(self.CancelBTN)
+        self.ObjectsLayout.addWidget(self.ObjectLWG)
 
         ObjectsGB = QGroupBox()
         ObjectsGB.setTitle("Objects to track")
@@ -158,15 +181,15 @@ class VideoWidget(QWidget):
         StopBTN.setMinimumSize(QSize(40, 40))
         StopBTN.clicked.connect(self.closeVideo)
 
-        ForwardBTN = QPushButton()
-        ForwardBTN.setIcon(QIcon("images/forward.svg"))
-        ForwardBTN.setMinimumSize(QSize(40, 40))
-        ForwardBTN.clicked.connect(self.JumpForward)
+        self.ForwardBTN = QPushButton()
+        self.ForwardBTN.setIcon(QIcon("images/forward.svg"))
+        self.ForwardBTN.setMinimumSize(QSize(40, 40))
+        self.ForwardBTN.clicked.connect(self.JumpForward)
 
-        BackwardBTN = QPushButton()
-        BackwardBTN.setIcon(QIcon("images/backward.svg"))
-        BackwardBTN.setMinimumSize(QSize(40, 40))
-        BackwardBTN.clicked.connect(self.JumpBackward)
+        self.BackwardBTN = QPushButton()
+        self.BackwardBTN.setIcon(QIcon("images/backward.svg"))
+        self.BackwardBTN.setMinimumSize(QSize(40, 40))
+        self.BackwardBTN.clicked.connect(self.JumpBackward)
 
         self.VideoSLD = QSlider(Qt.Horizontal)
         self.VideoSLD.setMinimum(0)
@@ -178,8 +201,8 @@ class VideoWidget(QWidget):
         PlayerControlLayout = QHBoxLayout()
         PlayerControlLayout.addWidget(self.StartPauseBTN)
         PlayerControlLayout.addWidget(StopBTN)
-        PlayerControlLayout.addWidget(BackwardBTN)
-        PlayerControlLayout.addWidget(ForwardBTN)
+        PlayerControlLayout.addWidget(self.BackwardBTN)
+        PlayerControlLayout.addWidget(self.ForwardBTN)
         PlayerControlLayout.addWidget(self.VideoSLD)
 
         # Zoom and move control buttons
@@ -232,7 +255,6 @@ class VideoWidget(QWidget):
         self.VidLBL.setMinimumSize(640, 480)
         self.VidLBL.setStyleSheet("background-color: #c9c9c9")
         self.VidLBL.setPixmap(QPixmap("images/video.svg"))
-        self.VidLBL.release.connect(lambda x_rel, y_rel: self.drawPoint(x_rel, y_rel))
 
         # Label for timestap
         self.VidTimeLBL = QLabel()
@@ -261,6 +283,42 @@ class VideoWidget(QWidget):
         ZoomControlGB.setTitle("Zoom control")
         ZoomControlGB.setLayout(ZoomControlLayout)
 
+        self.mmLNE = QLineEdit()
+        self.mmLNE.setValidator(QDoubleValidator(0, 10000, 2))
+        self.mmLNE.setVisible(False)
+        self.mmLBL = QLabel("mm")
+        self.mmLBL.setVisible(False)
+
+        self.setRulerBTN = QPushButton()
+        self.setRulerBTN.setText("Set")
+        self.setRulerBTN.clicked.connect(self.setRuler)
+
+        self.saveRulerBTN = QPushButton()
+        self.saveRulerBTN.setText("Save")
+        self.saveRulerBTN.clicked.connect(self.saveRuler)
+        self.saveRulerBTN.setVisible(False)
+
+        self.removeRulerBTN = QPushButton()
+        self.removeRulerBTN.setText("Delete")
+        self.removeRulerBTN.setVisible(False)
+        self.removeRulerBTN.clicked.connect(self.removeRuler)
+
+        # Ruler layout
+        self.RulerInputLayout = QHBoxLayout()
+        self.RulerInputLayout.addWidget(self.mmLNE)
+        self.RulerInputLayout.addWidget(self.mmLBL)
+        RulerLayout = QVBoxLayout()
+        RulerLayout.addLayout(self.RulerInputLayout)
+        RulerLayout.addWidget(self.setRulerBTN)
+        RulerLayout.addWidget(self.saveRulerBTN)
+        RulerLayout.addWidget(self.removeRulerBTN)
+
+        # groupbox
+        RulerGB = QGroupBox()
+        RulerGB.setTitle("Ruler")
+        RulerGB.setLayout(RulerLayout)
+        RulerGB.setFixedWidth(200)
+
         # SideLayout
         SideLayout = QVBoxLayout()
         SideLayout.addWidget(OpenBTN)
@@ -268,6 +326,7 @@ class VideoWidget(QWidget):
         SideLayout.addWidget(TrackingSectionGB)
         SideLayout.addWidget(ObjectsGB)
         SideLayout.addWidget(ZoomControlGB)
+        SideLayout.addWidget(RulerGB)
         SideLayout.addItem(
             QSpacerItem(0, 10, QSizePolicy.Minimum, QSizePolicy.Expanding)
         )
@@ -304,7 +363,7 @@ class VideoWidget(QWidget):
         self.camera = cv2.VideoCapture(self.filename)
 
         # important properties
-        self.fps = int(self.camera.get(cv2.CAP_PROP_FPS))
+        self.fps = self.camera.get(cv2.CAP_PROP_FPS)
         self.num_of_frames = int(self.camera.get(cv2.CAP_PROP_FRAME_COUNT))
         self.video_width = int(self.camera.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.video_height = int(self.camera.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -314,7 +373,7 @@ class VideoWidget(QWidget):
         self.ResolutionLBL.setText(
             f"Resolution: {self.video_width}x{self.video_height}"
         )
-        self.FpsLBL.setText(f"FPS: {self.fps}")
+        self.FpsLBL.setText(f"FPS: {self.fps:.2f}")
         self.LengthLBL.setText(
             f"Video length: {self.time_to_display(self.num_of_frames)}"
         )
@@ -338,7 +397,10 @@ class VideoWidget(QWidget):
         if self.StartPauseBTN.isChecked():
             if self.camera.get(cv2.CAP_PROP_POS_FRAMES) == self.num_of_frames:
                 self.camera.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            self.timer.start(int(1000 / self.fps))
+            if self.section_start is not None and self.section_stop is not None:
+                self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start)
+
+            self.timer.start(round(1000 / self.fps))
             self.StartPauseBTN.setIcon(QIcon("images/pause.svg"))
         else:
             self.timer.stop()
@@ -346,6 +408,21 @@ class VideoWidget(QWidget):
 
     def nextFrame(self):
         """Loads and displays the next frame from the video feed"""
+        # Disables video playing outside of selected section (if selected)
+        if self.section_start is not None and self.section_stop is not None:
+            pos = self.camera.get(cv2.CAP_PROP_POS_FRAMES)
+            if pos < self.section_start - 1:
+                self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start)
+            if self.section_stop == pos:
+                self.timer.stop()
+                self.StartPauseBTN.setChecked(False)
+                self.StartPauseBTN.setIcon(QIcon("images/play.svg"))
+                return
+            if self.section_stop < pos:
+                self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_stop)
+                return
+
+        # display
         ret, frame = self.camera.read()
         if ret:
             frame = crop_frame(frame, self.x_offset, self.y_offset, self.zoom)
@@ -367,6 +444,7 @@ class VideoWidget(QWidget):
             self.VideoSLD.blockSignals(True)
             self.VideoSLD.setValue(slider_pos)
             self.VideoSLD.blockSignals(False)
+
         else:
             self.timer.stop()
             self.StartPauseBTN.setChecked(False)
@@ -377,25 +455,29 @@ class VideoWidget(QWidget):
         if self.camera is not None:
             ret, frame = self.camera.retrieve()
             if ret:
-                if True:
+                # some kind of gate needed
+                if self.camera.get(cv2.CAP_PROP_POS_FRAMES) == self.section_start:
                     # previous
                     for obj in self.objects_to_track:
-                        x, y = obj.point
-                        frame = cv2.drawMarker(
-                            frame, (x, y), (0, 0, 255), 0, thickness=2
-                        )
-                        x0, y0, x1, y1 = obj.rectangle
-                        frame = cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 0, 0), 2)
-                        cv2.putText(
-                            frame,
-                            obj.name,
-                            (x0, y0 - 5),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.5,
-                            (255, 0, 0),
-                            1,
-                            cv2.LINE_AA,
-                        )
+                        if obj.visible:
+                            x, y = obj.point
+                            frame = cv2.drawMarker(
+                                frame, (x, y), (0, 0, 255), 0, thickness=2
+                            )
+                            x0, y0, x1, y1 = obj.rectangle
+                            frame = cv2.rectangle(
+                                frame, (x0, y0), (x1, y1), (255, 0, 0), 2
+                            )
+                            cv2.putText(
+                                frame,
+                                obj.name,
+                                (x0, y0 - 5),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                0.5,
+                                (255, 0, 0),
+                                1,
+                                cv2.LINE_AA,
+                            )
                     # current
                     if self.point_tmp is not None:
                         x, y = self.point_tmp
@@ -405,6 +487,22 @@ class VideoWidget(QWidget):
                     if self.rect_tmp is not None:
                         x0, y0, x1, y1 = self.rect_tmp
                         frame = cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 0, 0), 2)
+
+                    # ruler
+                    if self.ruler.displayable():
+                        frame = cv2.line(
+                            frame,
+                            (self.ruler.x0, self.ruler.y0),
+                            (self.ruler.x1, self.ruler.y1),
+                            (0, 0, 255),
+                            2,
+                        )
+                        frame = cv2.circle(
+                            frame, (self.ruler.x0, self.ruler.y0), 5, (0, 0, 255), -1
+                        )
+                        frame = cv2.circle(
+                            frame, (self.ruler.x1, self.ruler.y1), 5, (0, 0, 255), -1
+                        )
                 frame = crop_frame(frame, self.x_offset, self.y_offset, self.zoom)
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 img = QImage(
@@ -466,7 +564,6 @@ class VideoWidget(QWidget):
         ):
             x_new = -floor(self.video_width / 2 - self.zoom * self.video_width / 2)
         self.x_offset = x_new
-        print(f"xoffset:{self.x_offset} yoffset:{self.y_offset}")
         self.ReloadCurrentFrame()
 
     def changeYoffset(self, delta):
@@ -541,7 +638,6 @@ class VideoWidget(QWidget):
             + round(y_rel * self.video_height * self.zoom)
             + round(self.video_height / 2)
         )
-        print(f"x:{x} y:{y}")
         return x, y
 
     def modifyTimestampLBL(self, index):
@@ -601,11 +697,15 @@ class VideoWidget(QWidget):
         self.PickPointBTN.setVisible(True)
         self.PickRectangleBTN.setVisible(True)
         self.SaveBTN.setVisible(True)
+        self.CancelBTN.setVisible(True)
 
-        self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start)
+        self.camera.set(cv2.CAP_PROP_POS_FRAMES, (self.section_start - 1))
         self.nextFrame()
+        self.ReloadCurrentFrame()
         self.VideoSLD.setEnabled(False)
         self.StartPauseBTN.setEnabled(False)
+        self.ForwardBTN.setEnabled(False)
+        self.BackwardBTN.setEnabled(False)
 
     def saveObject(self):
         """Saves temporary point and rectangle data in the objects_to_track list"""
@@ -629,20 +729,90 @@ class VideoWidget(QWidget):
             self.VidLBL.press.disconnect()
         except:
             pass
+        try:
+            self.VidLBL.release.disconnect()
+        except:
+            pass
+
+        # display in listwigget
+        self.ObjectLWG.addItem(O.name)
+
+        # reorganize widgets
         self.NameLNE.setVisible(False)
         self.NameLNE.clear()
         self.PickPointBTN.setVisible(False)
+        self.PickPointBTN.setChecked(False)
         self.PickRectangleBTN.setVisible(False)
+        self.PickRectangleBTN.setChecked(False)
         self.SaveBTN.setVisible(False)
+        self.CancelBTN.setVisible(False)
         self.NewObjectBTN.setVisible(True)
 
-        # reorganize layout
+        # enable video playback
+        self.StartPauseBTN.setEnabled(True)
+        self.VideoSLD.setEnabled(True)
+        self.ForwardBTN.setEnabled(True)
+        self.BackwardBTN.setEnabled(True)
+
+        # reload
+        self.ReloadCurrentFrame()
+
+    def cancelObject(self):
+        """Cancels the adding operation, deletes all the buffers and reorganizes the layout"""
+        # delete temp buffer
+        self.point_tmp = None
+        self.rect_tmp = None
+
+        # disconnect
+        try:
+            self.VidLBL.moving.disconnect()
+        except:
+            pass
+        try:
+            self.VidLBL.press.disconnect()
+        except:
+            pass
+        try:
+            self.VidLBL.release.disconnect()
+        except:
+            pass
+
+        # reorganize widgets
+        self.NameLNE.setVisible(False)
+        self.NameLNE.clear()
+        self.PickPointBTN.setVisible(False)
+        self.PickPointBTN.setChecked(False)
+        self.PickRectangleBTN.setVisible(False)
+        self.PickRectangleBTN.setChecked(False)
+        self.SaveBTN.setVisible(False)
+        self.CancelBTN.setVisible(False)
+        self.NewObjectBTN.setVisible(True)
+
+        # enable video playback
+        self.StartPauseBTN.setEnabled(True)
+        self.VideoSLD.setEnabled(True)
+        self.ForwardBTN.setEnabled(True)
+        self.BackwardBTN.setEnabled(True)
         self.ReloadCurrentFrame()
 
     def pickPointStart(self):
         """Waits for a signal generated by VidLBL with the coordinates"""
         if self.camera is None or self.section_start is None:
             return
+        # disconnect all signals
+        try:
+            self.VidLBL.moving.disconnect()
+        except:
+            pass
+        try:
+            self.VidLBL.press.disconnect()
+        except:
+            pass
+        try:
+            self.VidLBL.release.disconnect()
+        except:
+            pass
+        self.PickRectangleBTN.setChecked(False)
         self.VidLBL.press.connect(lambda x, y: self.savePoint(x, y))
 
     def pickRectStart(self):
@@ -652,6 +822,7 @@ class VideoWidget(QWidget):
         if self.PickRectangleBTN.isChecked():
             self.VidLBL.moving.connect(lambda x, y: self.resizeRectangle(x, y))
             self.VidLBL.press.connect(lambda x, y: self.initRectangle(x, y))
+            self.VidLBL.release.connect(lambda x, y: self.saveRectangle(x, y))
         else:
             try:
                 self.VidLBL.moving.disconnect()
@@ -659,6 +830,10 @@ class VideoWidget(QWidget):
                 pass
             try:
                 self.VidLBL.press.disconnect()
+            except:
+                pass
+            try:
+                self.VidLBL.release.disconnect()
             except:
                 pass
 
@@ -678,14 +853,118 @@ class VideoWidget(QWidget):
         self.rect_tmp = (x0, y0, x1, y1)
         self.ReloadCurrentFrame()
 
+    def saveRectangle(self, x, y):
+        if self.camera is None or self.section_start is None:
+            return
+        x1, y1 = self.relative_to_cv(x, y)
+        x0, y0, _, _ = self.rect_tmp
+        self.rect_tmp = (x0, y0, x1, y1)
+        self.PickRectangleBTN.setChecked(False)
+        self.pickRectStart()
+        self.ReloadCurrentFrame()
+
     def savePoint(self, x, y):
         """Saves the coordinates recieved from VidLBL"""
         x, y = self.relative_to_cv(x, y)
         self.point_tmp = (x, y)
-        print(self.point_tmp)
         self.ReloadCurrentFrame()
         self.VidLBL.press.disconnect()
         self.PickPointBTN.setChecked(False)
+
+    def deleteObject(self, name):
+        index = next(
+            (i for i, item in enumerate(self.objects_to_track) if item.name == name), -1
+        )
+        del self.objects_to_track[index]
+        i = self.ObjectLWG.takeItem(index)
+        del i
+        self.ReloadCurrentFrame()
+
+    def changeObjectDisplay(self, name):
+        index = next(
+            (i for i, item in enumerate(self.objects_to_track) if item.name == name), -1
+        )
+        self.objects_to_track[index].visible = not self.objects_to_track[index].visible
+        self.ReloadCurrentFrame()
+
+    def setRuler(self):
+        if self.camera is None or self.section_start is None:
+            return
+        self.VidLBL.press.connect(lambda x, y: self.setRulerStart(x, y))
+        self.VidLBL.moving.connect(lambda x, y: self.setRulerMove(x, y))
+        self.setRulerBTN.setVisible(False)
+        self.saveRulerBTN.setVisible(True)
+        self.removeRulerBTN.setVisible(True)
+        self.mmLBL.setVisible(True)
+        self.mmLNE.setVisible(True)
+
+    def setRulerStart(self, x, y):
+        if self.camera is None or self.section_start is None:
+            return
+        self.ruler.clear()
+        x0, y0 = self.relative_to_cv(x, y)
+        self.ruler.setP0(x0, y0)
+        self.ReloadCurrentFrame()
+        print("push")
+        print(
+            f"x:{self.ruler.x0} y:{self.ruler.y0} x:{self.ruler.x1} y:{self.ruler.y1}"
+        )
+
+    def setRulerMove(self, x, y):
+        if self.camera is None or self.section_start is None:
+            return
+        self.ruler.rdy = False
+        x1, y1 = self.relative_to_cv(x, y)
+        self.ruler.setP1(x1, y1)
+        self.ReloadCurrentFrame()
+        print("move")
+
+    def saveRuler(self):
+        input = self.mmLNE.text()
+        if not self.ruler.displayable() or input == "":
+            return
+        self.ruler.mm = float(input)
+        self.ruler.calculate()
+        self.ReloadCurrentFrame()
+        self.saveRulerBTN.setVisible(False)
+        self.mmLNE.setVisible(False)
+        self.mmLBL.setText(f"{self.ruler.mm_per_pix:.2f} mm/px")
+        self.mmLBL.setAlignment(Qt.AlignCenter)
+        try:
+            self.VidLBL.press.disconnect()
+        except:
+            pass
+        try:
+            self.VidLBL.moving.disconnect()
+        except:
+            pass
+        try:
+            self.VidLBL.release.disconnect()
+        except:
+            pass
+
+    def removeRuler(self):
+        self.ruler.reset()
+        self.setRulerBTN.setVisible(True)
+        self.saveRulerBTN.setVisible(False)
+        self.mmLBL.setVisible(False)
+        self.mmLNE.setVisible(False)
+        self.mmLBL.setText("mm")
+        self.mmLNE.setText("")
+        self.removeRulerBTN.setVisible(False)
+        try:
+            self.VidLBL.press.disconnect()
+        except:
+            pass
+        try:
+            self.VidLBL.moving.disconnect()
+        except:
+            pass
+        try:
+            self.VidLBL.release.disconnect()
+        except:
+            pass
+        self.ReloadCurrentFrame()
 
 
 def crop_frame(frame, x_offset, y_offset, zoom):
