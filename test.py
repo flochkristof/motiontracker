@@ -3,7 +3,7 @@ from tracker import Motion, select_rectangle, select_point
 import cv2
 import time
 
-cam = cv2.VideoCapture("reddot.mp4")
+cam = cv2.VideoCapture("Video2_Airsoft.mp4")
 
 rectangle = select_rectangle(cam, 100)  # returns with x,y h, w
 cv2.destroyAllWindows()

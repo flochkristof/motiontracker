@@ -32,6 +32,7 @@ class Ruler:
         self.mm = None
         self.mm_per_pix = None
         self.rdy = False
+        self.visible = True
 
     def setP0(self, x, y):
         self.x0 = int(x)
@@ -185,3 +186,4 @@ class ObjectListWidget(QListWidget):
         menu.addSeparator()
         menu.addAction("Delete", lambda: self.delete.emit(item.text()))
         menu.exec_(QCursor.pos())
+

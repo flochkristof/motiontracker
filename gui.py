@@ -282,6 +282,7 @@ class VideoWidget(QWidget):
         ZoomControlGB = QGroupBox()
         ZoomControlGB.setTitle("Zoom control")
         ZoomControlGB.setLayout(ZoomControlLayout)
+        ZoomControlGB.setFixedWidth(200)
 
         self.mmLNE = QLineEdit()
         self.mmLNE.setValidator(QDoubleValidator(0, 10000, 2))
@@ -303,21 +304,36 @@ class VideoWidget(QWidget):
         self.removeRulerBTN.setVisible(False)
         self.removeRulerBTN.clicked.connect(self.removeRuler)
 
+        self.changeRulerVisibilityBTN = QPushButton()
+        self.changeRulerVisibilityBTN.setText("Hide")
+        self.changeRulerVisibilityBTN.setVisible(False)
+        self.changeRulerVisibilityBTN.clicked.connect(self.changeRulerVisibility)
+
         # Ruler layout
         self.RulerInputLayout = QHBoxLayout()
         self.RulerInputLayout.addWidget(self.mmLNE)
         self.RulerInputLayout.addWidget(self.mmLBL)
+        RulerControlLayout = QHBoxLayout()
+        RulerControlLayout.addWidget(self.removeRulerBTN)
+        RulerControlLayout.addWidget(self.changeRulerVisibilityBTN)
         RulerLayout = QVBoxLayout()
         RulerLayout.addLayout(self.RulerInputLayout)
         RulerLayout.addWidget(self.setRulerBTN)
         RulerLayout.addWidget(self.saveRulerBTN)
-        RulerLayout.addWidget(self.removeRulerBTN)
+        RulerLayout.addLayout(RulerControlLayout)
 
-        # groupbox
+        # Ruler groupbox
         RulerGB = QGroupBox()
         RulerGB.setTitle("Ruler")
         RulerGB.setLayout(RulerLayout)
         RulerGB.setFixedWidth(200)
+
+        # Track button
+        self.TrackBTN = QPushButton()
+        self.TrackBTN.setFixedSize(QSize(200, 60))
+        self.TrackBTN.setText("Track")
+        self.TrackBTN.setEnabled(False)
+        self.TrackBTN.setStyleSheet("font-size: 18pt;font-weight: bold;")
 
         # SideLayout
         SideLayout = QVBoxLayout()
@@ -330,6 +346,8 @@ class VideoWidget(QWidget):
         SideLayout.addItem(
             QSpacerItem(0, 10, QSizePolicy.Minimum, QSizePolicy.Expanding)
         )
+        SideLayout.addWidget(self.TrackBTN)
+        SideLayout.addItem(QSpacerItem(0, 10, QSizePolicy.Fixed))
         SideLayout.addWidget(self.VidTimeLBL)
         SideLayout.setContentsMargins(0, 0, 0, 12)
 
@@ -425,9 +443,32 @@ class VideoWidget(QWidget):
         # display
         ret, frame = self.camera.read()
         if ret:
+            # ruler
+            if self.ruler.displayable() and self.ruler.visible:
+                frame = cv2.line(
+                    frame,
+                    (self.ruler.x0, self.ruler.y0),
+                    (self.ruler.x1, self.ruler.y1),
+                    (0, 0, 255),
+                    2,
+                )
+                frame = cv2.circle(
+                    frame, (self.ruler.x0, self.ruler.y0), 5, (0, 0, 255), -1
+                )
+                frame = cv2.circle(
+                    frame, (self.ruler.x1, self.ruler.y1), 5, (0, 0, 255), -1
+                )
+
             frame = crop_frame(frame, self.x_offset, self.y_offset, self.zoom)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            img = QImage(frame, frame.shape[1], frame.shape[0], QImage.Format_RGB888)
+
+            img = QImage(
+                frame.data,
+                frame.shape[1],
+                frame.shape[0],
+                frame.shape[1] * frame.shape[2],
+                QImage.Format_RGB888,
+            )
             pix = QPixmap.fromImage(img)
             pix = pix.scaled(
                 self.VidLBL.width(),
@@ -488,25 +529,29 @@ class VideoWidget(QWidget):
                         x0, y0, x1, y1 = self.rect_tmp
                         frame = cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 0, 0), 2)
 
-                    # ruler
-                    if self.ruler.displayable():
-                        frame = cv2.line(
-                            frame,
-                            (self.ruler.x0, self.ruler.y0),
-                            (self.ruler.x1, self.ruler.y1),
-                            (0, 0, 255),
-                            2,
-                        )
-                        frame = cv2.circle(
-                            frame, (self.ruler.x0, self.ruler.y0), 5, (0, 0, 255), -1
-                        )
-                        frame = cv2.circle(
-                            frame, (self.ruler.x1, self.ruler.y1), 5, (0, 0, 255), -1
-                        )
+                # ruler
+                if self.ruler.displayable() and self.ruler.visible:
+                    frame = cv2.line(
+                        frame,
+                        (self.ruler.x0, self.ruler.y0),
+                        (self.ruler.x1, self.ruler.y1),
+                        (0, 0, 255),
+                        2,
+                    )
+                    frame = cv2.circle(
+                        frame, (self.ruler.x0, self.ruler.y0), 5, (0, 0, 255), -1
+                    )
+                    frame = cv2.circle(
+                        frame, (self.ruler.x1, self.ruler.y1), 5, (0, 0, 255), -1
+                    )
                 frame = crop_frame(frame, self.x_offset, self.y_offset, self.zoom)
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 img = QImage(
-                    frame, frame.shape[1], frame.shape[0], QImage.Format_RGB888
+                    frame,
+                    frame.shape[1],
+                    frame.shape[0],
+                    frame.shape[1] * frame.shape[2],
+                    QImage.Format_RGB888,
                 )
                 pix = QPixmap.fromImage(img)
                 pix = pix.scaled(
@@ -597,6 +642,32 @@ class VideoWidget(QWidget):
         self.zoom = z
 
         # adjusting offset if needed
+        """
+        if int(self.x_offset + self.zoom * self.video_width / 2) >= int(
+            self.video_width / 2
+        ):
+            self.x_offset = int(self.video_width / 2 - self.zoom * self.video_width / 2)
+        elif int(self.video_width / 2) + self.x_offset <= int(
+            self.zoom * self.video_width / 2
+        ):
+            self.x_offset = -int(
+                self.video_width / 2 - self.zoom * self.video_width / 2
+            )
+
+        if int(self.y_offset + self.zoom * self.video_height / 2) >= int(
+            self.video_height / 2
+        ):
+            self.y_offset = int(
+                self.video_height / 2 - self.zoom * self.video_height / 2
+            )
+
+        elif int(self.video_height / 2) + self.y_offset <= int(
+            self.zoom * self.video_height / 2
+        ):
+            self.y_offset = -int(
+                self.video_height / 2 - self.zoom * self.video_height / 2
+            )"""
+
         if ceil(self.x_offset + self.zoom * self.video_width / 2) >= floor(
             self.video_width / 2
         ):
@@ -701,7 +772,7 @@ class VideoWidget(QWidget):
 
         self.camera.set(cv2.CAP_PROP_POS_FRAMES, (self.section_start - 1))
         self.nextFrame()
-        self.ReloadCurrentFrame()
+        # self.ReloadCurrentFrame()
         self.VideoSLD.setEnabled(False)
         self.StartPauseBTN.setEnabled(False)
         self.ForwardBTN.setEnabled(False)
@@ -734,7 +805,7 @@ class VideoWidget(QWidget):
         except:
             pass
 
-        # display in listwigget
+        # display in listwidget
         self.ObjectLWG.addItem(O.name)
 
         # reorganize widgets
@@ -753,6 +824,14 @@ class VideoWidget(QWidget):
         self.VideoSLD.setEnabled(True)
         self.ForwardBTN.setEnabled(True)
         self.BackwardBTN.setEnabled(True)
+
+        # check if tracking is enabled
+        if (
+            len(self.objects_to_track) > 0
+            and self.section_start is not None
+            and self.section_stop is not None
+        ):
+            self.TrackBTN.setEnabled(True)
 
         # reload
         self.ReloadCurrentFrame()
@@ -878,6 +957,14 @@ class VideoWidget(QWidget):
         del self.objects_to_track[index]
         i = self.ObjectLWG.takeItem(index)
         del i
+
+        # check if tracking is still available
+        if (
+            len(self.objects_to_track) == 0
+            or self.section_start is None
+            or self.section_stop is None
+        ):
+            self.TrackBTN.setEnabled(False)
         self.ReloadCurrentFrame()
 
     def changeObjectDisplay(self, name):
@@ -905,10 +992,6 @@ class VideoWidget(QWidget):
         x0, y0 = self.relative_to_cv(x, y)
         self.ruler.setP0(x0, y0)
         self.ReloadCurrentFrame()
-        print("push")
-        print(
-            f"x:{self.ruler.x0} y:{self.ruler.y0} x:{self.ruler.x1} y:{self.ruler.y1}"
-        )
 
     def setRulerMove(self, x, y):
         if self.camera is None or self.section_start is None:
@@ -917,7 +1000,6 @@ class VideoWidget(QWidget):
         x1, y1 = self.relative_to_cv(x, y)
         self.ruler.setP1(x1, y1)
         self.ReloadCurrentFrame()
-        print("move")
 
     def saveRuler(self):
         input = self.mmLNE.text()
@@ -927,6 +1009,7 @@ class VideoWidget(QWidget):
         self.ruler.calculate()
         self.ReloadCurrentFrame()
         self.saveRulerBTN.setVisible(False)
+        self.changeRulerVisibilityBTN.setVisible(True)
         self.mmLNE.setVisible(False)
         self.mmLBL.setText(f"{self.ruler.mm_per_pix:.2f} mm/px")
         self.mmLBL.setAlignment(Qt.AlignCenter)
@@ -952,6 +1035,7 @@ class VideoWidget(QWidget):
         self.mmLBL.setText("mm")
         self.mmLNE.setText("")
         self.removeRulerBTN.setVisible(False)
+        self.changeRulerVisibilityBTN.setVisible(False)
         try:
             self.VidLBL.press.disconnect()
         except:
@@ -966,9 +1050,19 @@ class VideoWidget(QWidget):
             pass
         self.ReloadCurrentFrame()
 
+    def changeRulerVisibility(self):
+        if self.ruler.visible:
+            self.ruler.visible = False
+            self.changeRulerVisibilityBTN.setText("Show")
+        else:
+            self.ruler.visible = True
+            self.changeRulerVisibilityBTN.setText("Hide")
+        self.ReloadCurrentFrame()
+
 
 def crop_frame(frame, x_offset, y_offset, zoom):
     """Crops the frame according to offset and zoom parameters"""
+
     x0 = ceil(frame.shape[1] / 2)
     y0 = ceil(frame.shape[0] / 2)
     return frame[
@@ -981,3 +1075,4 @@ if __name__ == "__main__":
     App = QApplication(sys.argv)
     root = VideoWidget()
     sys.exit(App.exec())
+
