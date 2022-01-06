@@ -1,7 +1,11 @@
 from PyQt5.QtWidgets import (
     QDialog,
+    QGroupBox,
+    QHBoxLayout,
     QLabel,
     QDialogButtonBox,
+    QProgressBar,
+    QSpacerItem,
     QListWidget,
     QMenu,
     QPushButton,
@@ -9,18 +13,201 @@ from PyQt5.QtWidgets import (
     QLineEdit,
     QWidget,
     QAction,
+    QSizePolicy,
+    QComboBox,
+    QCheckBox,
 )
 from PyQt5.QtGui import QMouseEvent, QCursor
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import QThread, Qt, pyqtSignal, QEventLoop, QPoint
 import math
+import cv2
 
-
-class ObjectToTrack:
+""""
+class Motion:
     def __init__(self, name, point, rectangle, visible=True):
         self.name = name
         self.point = point
+        self.rectangle = rectangle #x,y,w,h
+        self.visible = visible
+
+"""
+
+
+class TrackingThread(QThread):
+    progressChanged = pyqtSignal(int)
+    newObject = pyqtSignal(str)
+
+    def __init__(
+        self, objects_to_track, camera, start, stop, tracker_type, zoom, rotation, fps
+    ):
+        self.objects_to_track = objects_to_track
+        self.camera = camera
+        self.section_start = start
+        self.section_stop = stop
+        self.tracker_type = tracker_type
+        self.zoom = zoom
+        self.rotation = rotation
+        self.fps = fps
+        self.progress = "0"
+        self.is_running = True
+        super(TrackingThread, self).__init__()
+
+    def cancel(self):
+        self.is_running = False
+
+    def run(self):
+        for M in self.objects_to_track:
+            # emit the name of the tracked object
+            self.newObject.emit(M.name)
+
+            # reset previous data
+            M.timestamp = []
+            M.rectangle_path = []
+            M.point_path = []
+
+            # creating the tracker
+            if self.tracker_type == "BOOSTING":
+                tracker = cv2.legacy.TrackerBoosting_create()
+            if self.tracker_type == "MIL":
+                tracker = cv2.TrackerMIL_create()
+            if self.tracker_type == "KCF":
+                tracker = cv2.TrackerKCF_create()
+            if self.tracker_type == "TLD":
+                tracker = cv2.TrackerTLD_create()
+            if self.tracker_type == "MEDIANFLOW":
+                tracker = cv2.TrackerMedianFlow_create()
+            if self.tracker_type == "GOTURN":
+                tracker = cv2.TrackerGOTURN_create()
+            if self.tracker_type == "MOSSE":
+                tracker = cv2.TrackerMOSSE_create()
+            if self.tracker_type == "CSRT":
+                tracker = cv2.TrackerCSRT_create()
+
+            # set camera to start frame, get the fps
+            self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start)
+
+            # initialize tracker
+            ret, frame = self.camera.read()
+            if not ret:
+                # hibakezelés
+                return
+            tracker.init(frame, M.rectangle)
+
+            # tracking
+            for i in range(int(self.section_stop - self.section_start)):
+                # read the next frame
+                ret, frame = self.camera.read()
+                if not ret:
+                    # hibakezelés
+                    break
+
+                # update the tracker
+                ret, roi_box = tracker.update(frame)
+                if ret:
+
+                    M.rectangle_path.append(roi_box)
+                    M.timestamp.append(i / self.fps)
+                    self.progress = math.ceil(
+                        i / (self.section_stop - self.section_start) * 100
+                    )
+                    self.progressChanged.emit(self.progress)
+                    # self.status = f"Tracking ... {self.progress}"
+                else:
+                    pass
+                    # self.status = "ERROR: Tracker update unsuccessful!"
+                    # self.is_running = False
+
+                if not self.is_running:
+                    M.rectangle_path = []
+                    M.timestamp = []
+                    print("interrupted")
+                    break
+            print(M.rectangle_path)
+
+            if not self.is_running:
+                break
+
+
+class Motion:
+    def __init__(self, name, point, rectangle, visible=True):
+        # identification
+        self.name = name
+
+        # starting properties
+        self.point = point
         self.rectangle = rectangle
         self.visible = visible
+
+        # output
+        self.timestamp = []
+        self.rectangle_path = []
+        self.point_path = []
+
+
+"""
+    def track(self, camera, start, stop, tracker_type, zoom, rotation, fps):
+        self.is_running = True
+        # clear previous coordinates
+        self.timestamp = []
+        self.rectangle_path = []
+        self.point_path = []
+
+        # creating the tracker
+        if tracker_type == "BOOSTING":
+            tracker = cv2.TrackerBoosting_create()
+        if tracker_type == "MIL":
+            tracker = cv2.TrackerMIL_create()
+        if tracker_type == "KCF":
+            tracker = cv2.TrackerKCF_create()
+        if tracker_type == "TLD":
+            tracker = cv2.TrackerTLD_create()
+        if tracker_type == "MEDIANFLOW":
+            tracker = cv2.TrackerMedianFlow_create()
+        if tracker_type == "GOTURN":
+            tracker = cv2.TrackerGOTURN_create()
+        if tracker_type == "MOSSE":
+            tracker = cv2.TrackerMOSSE_create()
+        if tracker_type == "CSRT":
+            tracker = cv2.TrackerCSRT_create()
+
+        # set camera to start frame, get the fps
+        camera.set(cv2.CAP_PROP_POS_FRAMES, start)
+
+        # initialize tracker
+        ret, frame = camera.read()
+        if not ret:
+            self.status = "ERROR: Unable to read camera frame!"
+            self.is_running = False
+            # hibakezelés
+            return
+        tracker.init(frame, self.rectangle)
+
+        # tracking
+        for i in range(int(stop - start)):
+            # read the next frame
+            ret, frame = camera.read()
+            if not ret:
+                # hibakezelés
+                self.status = "ERROR: Unable to read camera frame!"
+                self.is_running = False
+                break
+
+            # update the tracker
+            ret, roi_box = tracker.update(frame)
+            if ret:
+                self.rectangle_path.append(roi_box)
+                self.timestamp.append(i / fps)
+                self.progress = math.ceil(i / (stop - start) * 100)
+                self.status = f"Tracking ... {self.progress}"
+            else:
+                self.status = "ERROR: Tracker update unsuccessful!"
+                self.is_running = False
+
+            if not self.is_running:
+                break
+            print(self.progress)
+
+"""
 
 
 class Ruler:
@@ -166,12 +353,6 @@ class VideoLabel(QLabel):
         super().mousePressEvent(ev)
 
 
-class Point:
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
-
-
 class ObjectListWidget(QListWidget):
     delete = pyqtSignal(str)
     changeVisibility = pyqtSignal(str)
@@ -187,3 +368,98 @@ class ObjectListWidget(QListWidget):
         menu.addAction("Delete", lambda: self.delete.emit(item.text()))
         menu.exec_(QCursor.pos())
 
+
+class TrackingSettings(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
+        self.setWindowTitle("Tracking details")
+        trackLBL = QLabel("Tracking algorithm:")
+        self.algoritmCMB = QComboBox()
+        self.algoritmCMB.addItems(
+            ["BOOSTING", "MIL", "KCF", "TLD", "MEDIANFLOW", "GOTURN", "MOSSE", "CSRT"]
+        )
+        algoLayout = QHBoxLayout()
+        algoLayout.addWidget(trackLBL)
+        algoLayout.addWidget(self.algoritmCMB)
+
+        propLayout = QHBoxLayout()
+        propLBL = QLabel("Properties to track:")
+        propLabelLayout = QVBoxLayout()
+        propLabelLayout.addWidget(propLBL)
+        propLabelLayout.addItem(
+            QSpacerItem(0, 10, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        )
+        propCheckLayout = QVBoxLayout()
+        self.XYcoordinatesCHB = QCheckBox("X and Y coordinates")
+        self.rotationCHB = QCheckBox("Rotation around Z")
+        self.zoomCHB = QCheckBox("Zoom")
+        propCheckLayout.addWidget(self.XYcoordinatesCHB)
+        propCheckLayout.addWidget(self.rotationCHB)
+        propCheckLayout.addWidget(self.zoomCHB)
+
+        propLayout.addLayout(propLabelLayout)
+        propLayout.addLayout(propCheckLayout)
+
+        trackLayout = QVBoxLayout()
+        trackLayout.addLayout(algoLayout)
+        trackLayout.addLayout(propLayout)
+
+        trackGB = QGroupBox()
+        trackGB.setTitle("Tracking settings")
+        trackGB.setLayout(trackLayout)
+
+        postprocessGB = QGroupBox()
+        postprocessGB.setTitle("Post-processing settings")
+
+        groupBoxLayout = QHBoxLayout()
+        groupBoxLayout.addWidget(trackGB)
+        groupBoxLayout.addWidget(postprocessGB)
+
+        dialogLayout = QVBoxLayout()
+        dialogLayout.addLayout(groupBoxLayout)
+
+        startBTN = QPushButton()
+        startBTN.setText("Start")
+        startBTN.clicked.connect(self.accept)
+        dialogLayout.addWidget(startBTN)
+
+        self.setLayout(dialogLayout)
+
+    def tracker_type(self):
+        return self.algoritmCMB.currentText()
+
+    def zoom(self):
+        return self.zoomCHB.isChecked()
+
+    def xy(self):
+        return self.XYcoordinatesCHB.isChecked()
+
+    def rotation(self):
+        return self.rotationCHB.isChecked()
+
+
+class TrackingProgress(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
+        self.setWindowTitle("Calculation in progress...")
+        Layout = QVBoxLayout()
+        self.label = QLabel()
+        self.label.setStyleSheet("text-align: center;")
+        self.progressbar = QProgressBar()
+        self.progressbar.setMinimum(0)
+        self.progressbar.setMaximum(100)
+        self.progressbar.setMinimumWidth(400)
+        cancelProgressBTN = QPushButton("Cancel")
+        cancelProgressBTN.clicked.connect(self.rejected)
+        Layout.addWidget(self.label, Qt.AlignCenter)
+        Layout.addWidget(self.progressbar)
+        Layout.addWidget(cancelProgressBTN)
+        self.setLayout(Layout)
+
+    def updateName(self, name):
+        self.label.setText("Tracking object: " + name)
+
+    def updateBar(self, value):
+        self.progressbar.setValue(value)

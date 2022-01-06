@@ -8,6 +8,7 @@ class Motion:
         self.camera = kwargs["camera"]
         self.fps = self.camera.get(cv2.CAP_PROP_FPS)
         self.status = "Motion initialized"
+        self.is_running = False
 
         # output
         self.timestamp = []
@@ -22,19 +23,19 @@ class Motion:
 
         # creating the tracker
         if tracker_type == "BOOSTING":
-            tracker = cv2.TrackerBoosting_create()
+            tracker = cv2.legacy.TrackerBoosting_create()
         if tracker_type == "MIL":
             tracker = cv2.TrackerMIL_create()
         if tracker_type == "KCF":
             tracker = cv2.TrackerKCF_create()
         if tracker_type == "TLD":
-            tracker = cv2.TrackerTLD_create()
+            tracker = cv2.legacy.TrackerTLD_create()
         if tracker_type == "MEDIANFLOW":
-            tracker = cv2.TrackerMedianFlow_create()
+            tracker = cv2.legacy.TrackerMedianFlow_create()
         if tracker_type == "GOTURN":
             tracker = cv2.TrackerGOTURN_create()
         if tracker_type == "MOSSE":
-            tracker = cv2.TrackerMOSSE_create()
+            tracker = cv2.legacy.TrackerMOSSE_create()
         if tracker_type == "CSRT":
             tracker = cv2.TrackerCSRT_create()
 
@@ -56,6 +57,8 @@ class Motion:
             if not ret:
                 self.status = "ERROR: Unable to read camera frame!"
                 print("Unable to read camera frame!")
+                break
+            if not self.is_running:
                 break
 
             # update the tracker

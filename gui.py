@@ -1,12 +1,14 @@
 import sys
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
-
+import time
 from PyQt5.QtWidgets import (
     QApplication,
     QDialog,
+    QDialogButtonBox,
     QLabel,
     QLineEdit,
+    QProgressDialog,
     QSizePolicy,
     QSpacerItem,
     QWidget,
@@ -22,10 +24,13 @@ from PyQt5.QtWidgets import (
 )
 import cv2
 from classes import (
-    ObjectToTrack,
+    Motion,
+    TrackingSettings,
+    TrackingThread,
     VideoLabel,
     ObjectListWidget,
     Ruler,
+    TrackingProgress,
 )  # TimeInputDialog
 from math import floor, ceil
 
@@ -49,11 +54,13 @@ class VideoWidget(QWidget):
         self.point_tmp = None
         self.rect_tmp = None  # x0, y0, x1, y1
         self.ruler = Ruler()
+        self.mode = False  # False-> before tracking; True->after tracking
 
         self.timer = QTimer()
         self.timer.setTimerType(Qt.PreciseTimer)
         self.setWindowTitle("VideoWidget")
         self.setGeometry(100, 100, 1280, 720)  # x, y, w, h
+        self.installEventFilter(self)
         self.initUI()
         self.show()
 
@@ -62,8 +69,8 @@ class VideoWidget(QWidget):
         self.showMaximized()
 
         # Video open
-        OpenBTN = QPushButton("Open Video")
-        OpenBTN.clicked.connect(self.openNewFile)
+        self.OpenBTN = QPushButton("Open Video")
+        self.OpenBTN.clicked.connect(self.openNewFile)
 
         # Video properties
         self.FileNameLBL = QLabel()
@@ -334,10 +341,11 @@ class VideoWidget(QWidget):
         self.TrackBTN.setText("Track")
         self.TrackBTN.setEnabled(False)
         self.TrackBTN.setStyleSheet("font-size: 18pt;font-weight: bold;")
+        self.TrackBTN.clicked.connect(self.showTrackingSettings)
 
         # SideLayout
         SideLayout = QVBoxLayout()
-        SideLayout.addWidget(OpenBTN)
+        SideLayout.addWidget(self.OpenBTN)
         SideLayout.addWidget(self.PropGB)
         SideLayout.addWidget(TrackingSectionGB)
         SideLayout.addWidget(ObjectsGB)
@@ -360,6 +368,10 @@ class VideoWidget(QWidget):
         PlayerLayout = QHBoxLayout()
         PlayerLayout.addLayout(VideoControlLayout)
         PlayerLayout.addLayout(SideLayout)
+
+        # initializing dialogs
+        self.settingsDialog = TrackingSettings()
+        self.progressDialog = TrackingProgress()
 
         # Overall layout
         self.setLayout(PlayerLayout)
@@ -396,16 +408,42 @@ class VideoWidget(QWidget):
             f"Video length: {self.time_to_display(self.num_of_frames)}"
         )
         self.PropGB.setVisible(True)
+        self.OpenBTN.setVisible(False)
 
         self.timer.timeout.connect(self.nextFrame)
         self.nextFrame()
 
     def closeVideo(self):
         """Closes the video, releases the cam"""
-        self.camera.release()
+        if self.camera is not None:
+            self.camera.release()
         self.PropGB.setVisible(False)
         self.VidTimeLBL.setText("-/-")
         self.VidLBL.setPixmap(QPixmap("images/video.svg"))
+        self.OpenBTN.setVisible(True)
+        self.ObjectLWG.clear()
+        self.removeRuler()
+        self.cancelObject()
+
+        # reset stored properties
+        self.camera = None
+        self.fps = None
+        self.num_of_frames = 0
+        self.x_offset = 0
+        self.y_offset = 0
+        self.zoom = 1  # from 1 goes down to 0
+        self.filename = ""
+        self.video_width = None
+        self.video_height = None
+        self.objects_to_track = []
+        self.point_tmp = None
+        self.rect_tmp = None  # x0, y0, x1, y1
+        self.section_stop = None
+        self.SectionStopLBL.setText("Stop: - ")
+        self.setresetStopBTN.setText("Set")
+        self.section_start = None
+        self.SectionStartLBL.setText("Stop: - ")
+        self.setresetStartBTN.setText("Set")
 
     def StartPauseVideo(self):
         """Starts and pauses the video"""
@@ -505,7 +543,7 @@ class VideoWidget(QWidget):
                             frame = cv2.drawMarker(
                                 frame, (x, y), (0, 0, 255), 0, thickness=2
                             )
-                            x0, y0, x1, y1 = obj.rectangle
+                            x0, y0, x1, y1 = tracker2gui(obj.rectangle)
                             frame = cv2.rectangle(
                                 frame, (x0, y0), (x1, y1), (255, 0, 0), 2
                             )
@@ -642,32 +680,6 @@ class VideoWidget(QWidget):
         self.zoom = z
 
         # adjusting offset if needed
-        """
-        if int(self.x_offset + self.zoom * self.video_width / 2) >= int(
-            self.video_width / 2
-        ):
-            self.x_offset = int(self.video_width / 2 - self.zoom * self.video_width / 2)
-        elif int(self.video_width / 2) + self.x_offset <= int(
-            self.zoom * self.video_width / 2
-        ):
-            self.x_offset = -int(
-                self.video_width / 2 - self.zoom * self.video_width / 2
-            )
-
-        if int(self.y_offset + self.zoom * self.video_height / 2) >= int(
-            self.video_height / 2
-        ):
-            self.y_offset = int(
-                self.video_height / 2 - self.zoom * self.video_height / 2
-            )
-
-        elif int(self.video_height / 2) + self.y_offset <= int(
-            self.zoom * self.video_height / 2
-        ):
-            self.y_offset = -int(
-                self.video_height / 2 - self.zoom * self.video_height / 2
-            )"""
-
         if ceil(self.x_offset + self.zoom * self.video_width / 2) >= floor(
             self.video_width / 2
         ):
@@ -784,8 +796,8 @@ class VideoWidget(QWidget):
         if self.point_tmp is None or self.rect_tmp is None or name == "":
             return
         # save object
-        O = ObjectToTrack(name, self.point_tmp, self.rect_tmp)
-        self.objects_to_track.append(O)
+        M = Motion(name, self.point_tmp, gui2tracker(self.rect_tmp))
+        self.objects_to_track.append(M)
 
         # delete temp buffer
         self.point_tmp = None
@@ -806,7 +818,7 @@ class VideoWidget(QWidget):
             pass
 
         # display in listwidget
-        self.ObjectLWG.addItem(O.name)
+        self.ObjectLWG.addItem(M.name)
 
         # reorganize widgets
         self.NameLNE.setVisible(False)
@@ -1059,6 +1071,44 @@ class VideoWidget(QWidget):
             self.changeRulerVisibilityBTN.setText("Hide")
         self.ReloadCurrentFrame()
 
+    def showTrackingSettings(self):
+        if self.settingsDialog.exec_():
+            tracker_type = self.settingsDialog.tracker_type()
+            zoom = self.settingsDialog.zoom()
+            rotation = self.settingsDialog.rotation()
+            self.runTracker(tracker_type, zoom, rotation)
+
+    def eventFilter(self, source, event):
+        if event.type() == QEvent.KeyPress:
+            key = event.key()
+            if key == Qt.Key_W:
+                self.changeYoffset(-1)
+            elif key == Qt.Key_A:
+                self.changeXoffset(-1)
+            elif key == Qt.Key_S:
+                self.changeYoffset(1)
+            elif key == Qt.Key_D:
+                self.changeXoffset(1)
+        return super(VideoWidget, self).eventFilter(source, event)
+
+    def runTracker(self, tracker_type, zoom, rotation):
+        self.tracker = TrackingThread(
+            self.objects_to_track,
+            self.camera,
+            self.section_start,
+            self.section_stop,
+            tracker_type,
+            zoom,
+            rotation,
+            self.fps,
+        )
+        self.tracker.progressChanged.connect(self.progressDialog.updateBar)
+        self.tracker.newObject.connect(self.progressDialog.updateName)
+        self.tracker.start()
+        self.progressDialog.show()
+        self.progressDialog.rejected.connect(self.tracker.cancel)
+        self.tracker.finished.connect(self.progressDialog.accept)
+
 
 def crop_frame(frame, x_offset, y_offset, zoom):
     """Crops the frame according to offset and zoom parameters"""
@@ -1069,6 +1119,16 @@ def crop_frame(frame, x_offset, y_offset, zoom):
         (y0 + y_offset - round(y0 * zoom)) : (y0 + y_offset + round(y0 * zoom)),
         (x0 + x_offset - round(x0 * zoom)) : (x0 + x_offset + round(x0 * zoom)),
     ]
+
+
+def gui2tracker(rectangle):
+    x1, y1, x2, y2 = rectangle
+    return (min(x1, x2), min(y1, y2), abs(x2 - x1), abs(y2 - y1))
+
+
+def tracker2gui(rectangle):
+    x, y, w, h = rectangle
+    return (x, y, x + w, y + h)
 
 
 if __name__ == "__main__":
