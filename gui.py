@@ -453,8 +453,8 @@ class VideoWidget(QWidget):
         if self.StartPauseBTN.isChecked():
             if self.camera.get(cv2.CAP_PROP_POS_FRAMES) == self.num_of_frames:
                 self.camera.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            if self.section_start is not None and self.section_stop is not None:
-                self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start)
+            # if self.section_start is not None and self.section_stop is not None:
+            #    self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start)
 
             self.timer.start(round(1000 / self.fps))
             self.StartPauseBTN.setIcon(QIcon("images/pause.svg"))
@@ -464,9 +464,11 @@ class VideoWidget(QWidget):
 
     def nextFrame(self):
         """Loads and displays the next frame from the video feed"""
+
+        pos = self.camera.get(cv2.CAP_PROP_POS_FRAMES)
+
         # Disables video playing outside of selected section (if selected)
         if self.section_start is not None and self.section_stop is not None:
-            pos = self.camera.get(cv2.CAP_PROP_POS_FRAMES)
             if pos < self.section_start - 1:
                 self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start)
             if self.section_stop == pos:
@@ -481,6 +483,7 @@ class VideoWidget(QWidget):
         # display
         ret, frame = self.camera.read()
         if ret:
+
             # ruler
             if self.ruler.displayable() and self.ruler.visible:
                 frame = cv2.line(
@@ -496,6 +499,49 @@ class VideoWidget(QWidget):
                 frame = cv2.circle(
                     frame, (self.ruler.x1, self.ruler.y1), 5, (0, 0, 255), -1
                 )
+
+            # playback
+            if self.mode:
+                for obj in self.objects_to_track:
+                    if obj.visible:
+                        if pos == self.section_start:
+                            x, y = obj.point
+                            frame = cv2.drawMarker(
+                                frame, (x, y), (0, 0, 255), 0, thickness=2
+                            )
+                            x0, y0, x1, y1 = tracker2gui(obj.rectangle)
+                            frame = cv2.rectangle(
+                                frame, (x0, y0), (x1, y1), (255, 0, 0), 2
+                            )
+                            cv2.putText(
+                                frame,
+                                obj.name,
+                                (x0, y0 - 5),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                0.5,
+                                (255, 0, 0),
+                                1,
+                                cv2.LINE_AA,
+                            )
+                        else:
+                            x, y = obj.point_path[int(pos - self.section_start - 1)]
+                            frame = cv2.drawMarker(
+                                frame, (int(x), int(y)), (0, 0, 255), 0, thickness=2
+                            )
+                            x0, y0, x1, y1 = tracker2gui(
+                                obj.rectangle_path[int(pos - self.section_start - 1)]
+                            )
+                        frame = cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 0, 0), 2)
+                        cv2.putText(
+                            frame,
+                            obj.name,
+                            (x0, y0 - 5),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.5,
+                            (255, 0, 0),
+                            1,
+                            cv2.LINE_AA,
+                        )
 
             frame = crop_frame(frame, self.x_offset, self.y_offset, self.zoom)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -626,6 +672,14 @@ class VideoWidget(QWidget):
             return
         pos = self.VideoSLD.value()
         pos_in_frames = int(pos / 10000 * self.num_of_frames)
+        if self.section_start is not None:
+            if pos_in_frames < self.section_start:
+                pos_in_frames = self.section_start
+                self.VideoSLD.setValue(int(10000 * pos_in_frames / self.num_of_frames))
+        if self.section_stop is not None:
+            if pos_in_frames > self.section_stop:
+                pos_in_frames = self.section_stop
+                self.VideoSLD.setValue(int(10000 * pos_in_frames / self.num_of_frames))
         self.camera.set(cv2.CAP_PROP_POS_FRAMES, pos_in_frames)
         self.nextFrame()
 
@@ -745,6 +799,7 @@ class VideoWidget(QWidget):
             return
         if self.section_start is None:
             self.section_start = self.camera.get(cv2.CAP_PROP_POS_FRAMES)
+            print(self.section_start)
             self.SectionStartLBL.setText(
                 f"Start: {self.time_to_display(self.section_start)}"
             )
@@ -784,7 +839,7 @@ class VideoWidget(QWidget):
 
         self.camera.set(cv2.CAP_PROP_POS_FRAMES, (self.section_start - 1))
         self.nextFrame()
-        # self.ReloadCurrentFrame()
+        self.ReloadCurrentFrame()
         self.VideoSLD.setEnabled(False)
         self.StartPauseBTN.setEnabled(False)
         self.ForwardBTN.setEnabled(False)
@@ -1108,6 +1163,7 @@ class VideoWidget(QWidget):
         self.progressDialog.show()
         self.progressDialog.rejected.connect(self.tracker.cancel)
         self.tracker.finished.connect(self.progressDialog.accept)
+        self.mode = True
 
 
 def crop_frame(frame, x_offset, y_offset, zoom):

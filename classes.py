@@ -62,7 +62,7 @@ class TrackingThread(QThread):
 
             # reset previous data
             M.timestamp = []
-            M.rectangle_path = []
+            M.rectangle_path = []  # xywh  pont koordináták: x+(px-rect[0])
             M.point_path = []
 
             # creating the tracker
@@ -93,6 +93,10 @@ class TrackingThread(QThread):
                 return
             tracker.init(frame, M.rectangle)
 
+            # for the calculation of the point
+            dy = (M.point[1] - M.rectangle[1]) / M.rectangle[3]
+            dx = (M.point[0] - M.rectangle[0]) / M.rectangle[2]
+
             # tracking
             for i in range(int(self.section_stop - self.section_start)):
                 # read the next frame
@@ -106,7 +110,10 @@ class TrackingThread(QThread):
                 if ret:
 
                     M.rectangle_path.append(roi_box)
-                    M.timestamp.append(i / self.fps)
+                    M.point_path.append(
+                        (roi_box[0] + dx * roi_box[2], roi_box[1] + dy * roi_box[3])
+                    )
+                    M.timestamp.append((i + 1) / self.fps)
                     self.progress = math.ceil(
                         i / (self.section_stop - self.section_start) * 100
                     )
@@ -142,72 +149,6 @@ class Motion:
         self.timestamp = []
         self.rectangle_path = []
         self.point_path = []
-
-
-"""
-    def track(self, camera, start, stop, tracker_type, zoom, rotation, fps):
-        self.is_running = True
-        # clear previous coordinates
-        self.timestamp = []
-        self.rectangle_path = []
-        self.point_path = []
-
-        # creating the tracker
-        if tracker_type == "BOOSTING":
-            tracker = cv2.TrackerBoosting_create()
-        if tracker_type == "MIL":
-            tracker = cv2.TrackerMIL_create()
-        if tracker_type == "KCF":
-            tracker = cv2.TrackerKCF_create()
-        if tracker_type == "TLD":
-            tracker = cv2.TrackerTLD_create()
-        if tracker_type == "MEDIANFLOW":
-            tracker = cv2.TrackerMedianFlow_create()
-        if tracker_type == "GOTURN":
-            tracker = cv2.TrackerGOTURN_create()
-        if tracker_type == "MOSSE":
-            tracker = cv2.TrackerMOSSE_create()
-        if tracker_type == "CSRT":
-            tracker = cv2.TrackerCSRT_create()
-
-        # set camera to start frame, get the fps
-        camera.set(cv2.CAP_PROP_POS_FRAMES, start)
-
-        # initialize tracker
-        ret, frame = camera.read()
-        if not ret:
-            self.status = "ERROR: Unable to read camera frame!"
-            self.is_running = False
-            # hibakezelés
-            return
-        tracker.init(frame, self.rectangle)
-
-        # tracking
-        for i in range(int(stop - start)):
-            # read the next frame
-            ret, frame = camera.read()
-            if not ret:
-                # hibakezelés
-                self.status = "ERROR: Unable to read camera frame!"
-                self.is_running = False
-                break
-
-            # update the tracker
-            ret, roi_box = tracker.update(frame)
-            if ret:
-                self.rectangle_path.append(roi_box)
-                self.timestamp.append(i / fps)
-                self.progress = math.ceil(i / (stop - start) * 100)
-                self.status = f"Tracking ... {self.progress}"
-            else:
-                self.status = "ERROR: Tracker update unsuccessful!"
-                self.is_running = False
-
-            if not self.is_running:
-                break
-            print(self.progress)
-
-"""
 
 
 class Ruler:

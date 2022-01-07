@@ -8,7 +8,6 @@ class Motion:
         self.camera = kwargs["camera"]
         self.fps = self.camera.get(cv2.CAP_PROP_FPS)
         self.status = "Motion initialized"
-        self.is_running = False
 
         # output
         self.timestamp = []
@@ -57,8 +56,6 @@ class Motion:
             if not ret:
                 self.status = "ERROR: Unable to read camera frame!"
                 print("Unable to read camera frame!")
-                break
-            if not self.is_running:
                 break
 
             # update the tracker
