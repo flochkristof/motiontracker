@@ -22,18 +22,9 @@ from PyQt5.QtCore import QThread, Qt, pyqtSignal, QEventLoop, QPoint
 import math
 import cv2
 
-""""
-class Motion:
-    def __init__(self, name, point, rectangle, visible=True):
-        self.name = name
-        self.point = point
-        self.rectangle = rectangle #x,y,w,h
-        self.visible = visible
-
-"""
-
 
 class TrackingThread(QThread):
+    """QThread class responsible for running the tracking algorithm"""
     progressChanged = pyqtSignal(int)
     newObject = pyqtSignal(str)
 
@@ -62,24 +53,25 @@ class TrackingThread(QThread):
 
             # reset previous data
             M.timestamp = []
-            M.rectangle_path = []  # xywh  pont koordináták: x+(px-rect[0])
+            M.rectangle_path = []  
             M.point_path = []
+            M.size_change = []
 
             # creating the tracker
             if self.tracker_type == "BOOSTING":
                 tracker = cv2.legacy.TrackerBoosting_create()
             if self.tracker_type == "MIL":
-                tracker = cv2.TrackerMIL_create()
+                tracker = cv2.legacy.TrackerMIL_create()
             if self.tracker_type == "KCF":
                 tracker = cv2.TrackerKCF_create()
             if self.tracker_type == "TLD":
-                tracker = cv2.TrackerTLD_create()
+                tracker = cv2.legacy.TrackerTLD_create()
             if self.tracker_type == "MEDIANFLOW":
-                tracker = cv2.TrackerMedianFlow_create()
+                tracker = cv2.legacy.TrackerMedianFlow_create()
             if self.tracker_type == "GOTURN":
                 tracker = cv2.TrackerGOTURN_create()
             if self.tracker_type == "MOSSE":
-                tracker = cv2.TrackerMOSSE_create()
+                tracker = cv2.legacy.TrackerMOSSE_create()
             if self.tracker_type == "CSRT":
                 tracker = cv2.TrackerCSRT_create()
 
@@ -96,6 +88,10 @@ class TrackingThread(QThread):
             # for the calculation of the point
             dy = (M.point[1] - M.rectangle[1]) / M.rectangle[3]
             dx = (M.point[0] - M.rectangle[0]) / M.rectangle[2]
+
+            # for zoom
+            w0=M.rectangle[2]
+            h0=M.rectangle[3]
 
             # tracking
             for i in range(int(self.section_stop - self.section_start)):
@@ -114,6 +110,8 @@ class TrackingThread(QThread):
                         (roi_box[0] + dx * roi_box[2], roi_box[1] + dy * roi_box[3])
                     )
                     M.timestamp.append((i + 1) / self.fps)
+                    #M.size_change.append((roi_box[2]/w0+roi_box[3]/h0)/2)
+                    #print(f"{M.size_change[-1]}")
                     self.progress = math.ceil(
                         i / (self.section_stop - self.section_start) * 100
                     )
@@ -127,15 +125,15 @@ class TrackingThread(QThread):
                 if not self.is_running:
                     M.rectangle_path = []
                     M.timestamp = []
-                    print("interrupted")
                     break
-            print(M.rectangle_path)
 
             if not self.is_running:
                 break
+        self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start)
 
 
 class Motion:
+    """Class that stores every detail of the objects being tracked"""
     def __init__(self, name, point, rectangle, visible=True):
         # identification
         self.name = name
@@ -149,9 +147,11 @@ class Motion:
         self.timestamp = []
         self.rectangle_path = []
         self.point_path = []
+        self.size_change=[]
 
 
 class Ruler:
+    """Class for users to define a milimeter scale on the video frames"""
     def __init__(self):
         self.x0 = None
         self.y0 = None
@@ -213,6 +213,7 @@ class Ruler:
 
 
 class VideoLabel(QLabel):
+    """Label to display the frames from OpenCV"""
     press = pyqtSignal(float, float)
     moving = pyqtSignal(float, float)
     release = pyqtSignal(float, float)
@@ -295,6 +296,7 @@ class VideoLabel(QLabel):
 
 
 class ObjectListWidget(QListWidget):
+    """Widget that displays the objects created by the user"""
     delete = pyqtSignal(str)
     changeVisibility = pyqtSignal(str)
 
@@ -311,6 +313,7 @@ class ObjectListWidget(QListWidget):
 
 
 class TrackingSettings(QDialog):
+    """Modal dialog where users can specify the tracking settings"""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
@@ -381,10 +384,12 @@ class TrackingSettings(QDialog):
 
 
 class TrackingProgress(QDialog):
+    """A modal dialog that shows the progress of the tracking"""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
         self.setWindowTitle("Calculation in progress...")
+        self.setModal(True)
         Layout = QVBoxLayout()
         self.label = QLabel()
         self.label.setStyleSheet("text-align: center;")
@@ -404,3 +409,9 @@ class TrackingProgress(QDialog):
 
     def updateBar(self, value):
         self.progressbar.setValue(value)
+
+
+class ExportDialog(QDialog):
+    """Handles the exporting of the data collected by the trackers"""
+    def __init__(self, parent=None):
+        super().__init__(parent)

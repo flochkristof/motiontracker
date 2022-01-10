@@ -447,14 +447,16 @@ class VideoWidget(QWidget):
 
     def StartPauseVideo(self):
         """Starts and pauses the video"""
+
         if self.camera is None:
             self.StartPauseBTN.setChecked(False)
             return
         if self.StartPauseBTN.isChecked():
             if self.camera.get(cv2.CAP_PROP_POS_FRAMES) == self.num_of_frames:
                 self.camera.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            # if self.section_start is not None and self.section_stop is not None:
-            #    self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start)
+            if self.section_start is not None and self.section_stop is not None:
+                if self.camera.get(cv2.CAP_PROP_POS_FRAMES) == self.section_stop:
+                    self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start)
 
             self.timer.start(round(1000 / self.fps))
             self.StartPauseBTN.setIcon(QIcon("images/pause.svg"))
@@ -470,14 +472,19 @@ class VideoWidget(QWidget):
         # Disables video playing outside of selected section (if selected)
         if self.section_start is not None and self.section_stop is not None:
             if pos < self.section_start - 1:
-                self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start)
+                pos = self.section_start
+                self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start - 1)
+            if self.section_stop < pos:
+                pos = self.section_stop
+                self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_stop)
+                slider_pos = round(pos / self.num_of_frames * 10000)
+                self.modifyTimestampLBL(pos)
+                self.VideoSLD.setValue(slider_pos)
+                return
             if self.section_stop == pos:
                 self.timer.stop()
                 self.StartPauseBTN.setChecked(False)
                 self.StartPauseBTN.setIcon(QIcon("images/play.svg"))
-                return
-            if self.section_stop < pos:
-                self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_stop)
                 return
 
         # display
@@ -502,14 +509,42 @@ class VideoWidget(QWidget):
 
             # playback
             if self.mode:
+                # print(
+                #    f"pos:{pos}, start:{self.section_start}, stop:{self.section_stop}"
+                # )
                 for obj in self.objects_to_track:
                     if obj.visible:
-                        if pos == self.section_start:
-                            x, y = obj.point
-                            frame = cv2.drawMarker(
-                                frame, (x, y), (0, 0, 255), 0, thickness=2
-                            )
-                            x0, y0, x1, y1 = tracker2gui(obj.rectangle)
+                        if (pos >= self.section_start) and (pos <= self.section_stop):
+                            if pos == self.section_start:
+                                x, y = obj.point
+                                frame = cv2.drawMarker(
+                                    frame, (x, y), (0, 0, 255), 0, thickness=2
+                                )
+                                x0, y0, x1, y1 = tracker2gui(obj.rectangle)
+                                frame = cv2.rectangle(
+                                    frame, (x0, y0), (x1, y1), (255, 0, 0), 2
+                                )
+                                cv2.putText(
+                                    frame,
+                                    obj.name,
+                                    (x0, y0 - 5),
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    0.5,
+                                    (255, 0, 0),
+                                    1,
+                                    cv2.LINE_AA,
+                                )
+                            else:
+                                x, y = obj.point_path[int(pos - self.section_start - 1)]
+                                frame = cv2.drawMarker(
+                                    frame, (int(x), int(y)), (0, 0, 255), 0, thickness=2
+                                )
+                                x0, y0, x1, y1 = tracker2gui(
+                                    obj.rectangle_path[
+                                        int(pos - self.section_start - 1)
+                                    ]
+                                )
+                            # print(f"{x0} {y0} {x1} {y1}")
                             frame = cv2.rectangle(
                                 frame, (x0, y0), (x1, y1), (255, 0, 0), 2
                             )
@@ -523,25 +558,6 @@ class VideoWidget(QWidget):
                                 1,
                                 cv2.LINE_AA,
                             )
-                        else:
-                            x, y = obj.point_path[int(pos - self.section_start - 1)]
-                            frame = cv2.drawMarker(
-                                frame, (int(x), int(y)), (0, 0, 255), 0, thickness=2
-                            )
-                            x0, y0, x1, y1 = tracker2gui(
-                                obj.rectangle_path[int(pos - self.section_start - 1)]
-                            )
-                        frame = cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 0, 0), 2)
-                        cv2.putText(
-                            frame,
-                            obj.name,
-                            (x0, y0 - 5),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.5,
-                            (255, 0, 0),
-                            1,
-                            cv2.LINE_AA,
-                        )
 
             frame = crop_frame(frame, self.x_offset, self.y_offset, self.zoom)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -564,7 +580,7 @@ class VideoWidget(QWidget):
 
             # move the slider
             pos_in_frames = self.camera.get(cv2.CAP_PROP_POS_FRAMES)
-            slider_pos = int(pos_in_frames / self.num_of_frames * 10000)
+            slider_pos = round(pos_in_frames / self.num_of_frames * 10000)
             self.modifyTimestampLBL(pos_in_frames)
             self.VideoSLD.blockSignals(True)
             self.VideoSLD.setValue(slider_pos)
@@ -577,6 +593,7 @@ class VideoWidget(QWidget):
 
     def ReloadCurrentFrame(self):
         """Reloads and displays the current frame"""
+
         if self.camera is not None:
             ret, frame = self.camera.retrieve()
             if ret:
@@ -671,24 +688,30 @@ class VideoWidget(QWidget):
         if self.camera is None:
             return
         pos = self.VideoSLD.value()
-        pos_in_frames = int(pos / 10000 * self.num_of_frames)
+        pos_in_frames = round(pos / 10000 * self.num_of_frames)
+        """
         if self.section_start is not None:
             if pos_in_frames < self.section_start:
-                pos_in_frames = self.section_start
-                self.VideoSLD.setValue(int(10000 * pos_in_frames / self.num_of_frames))
+                pos_in_frames = self.section_start  # - 1
+                self.VideoSLD.setValue(
+                    floor(10000 * pos_in_frames / self.num_of_frames)
+                )
         if self.section_stop is not None:
             if pos_in_frames > self.section_stop:
                 pos_in_frames = self.section_stop
-                self.VideoSLD.setValue(int(10000 * pos_in_frames / self.num_of_frames))
+                self.VideoSLD.setValue(
+                    floor(10000 * pos_in_frames / self.num_of_frames)
+                )"""
         self.camera.set(cv2.CAP_PROP_POS_FRAMES, pos_in_frames)
         self.nextFrame()
 
     def resizeEvent(self, e):
+        "Handles the resizing od the window"
         self.ReloadCurrentFrame()
         return super().resizeEvent(e)
 
     def changeXoffset(self, delta):
-        """Adjusts the X offset"""
+        """Adjusts the X offset of the video displaying label"""
         if self.camera is None:
             return
         x_new = self.x_offset + delta
@@ -704,7 +727,7 @@ class VideoWidget(QWidget):
         self.ReloadCurrentFrame()
 
     def changeYoffset(self, delta):
-        """Adjusts the Y offset"""
+        """Adjusts the Y offset of the video displaying label"""
         if self.camera is None:
             return
         y_new = self.y_offset + delta
@@ -799,7 +822,6 @@ class VideoWidget(QWidget):
             return
         if self.section_start is None:
             self.section_start = self.camera.get(cv2.CAP_PROP_POS_FRAMES)
-            print(self.section_start)
             self.SectionStartLBL.setText(
                 f"Start: {self.time_to_display(self.section_start)}"
             )
@@ -808,6 +830,16 @@ class VideoWidget(QWidget):
             self.section_start = None
             self.SectionStartLBL.setText("Start: - ")
             self.setresetStartBTN.setText("Set")
+
+        # check if tracking is enabled
+        if (
+            len(self.objects_to_track) > 0
+            and self.section_start is not None
+            and self.section_stop is not None
+        ):
+            self.TrackBTN.setEnabled(True)
+        else:
+            self.TrackBTN.setEnabled(False)
 
     def setresetStop(self):
         """Sets and resets the end of the tracked section"""
@@ -824,9 +856,23 @@ class VideoWidget(QWidget):
             self.SectionStopLBL.setText("Stop: - ")
             self.setresetStopBTN.setText("Set")
 
+        # check if tracking is enabled
+        if (
+            len(self.objects_to_track) > 0
+            and self.section_start is not None
+            and self.section_stop is not None
+        ):
+            self.TrackBTN.setEnabled(True)
+        else:
+            self.TrackBTN.setEnabled(False)
+
     def addNewObject(self):
         """Cunfigures the GUI for setting the point and tectangle that will be used for the tracking"""
-        if self.camera is None or self.section_start is None:
+        if (
+            self.camera is None
+            or self.section_start is None
+            or self.section_stop is None
+        ):
             return
 
         # reorganize the layout
@@ -899,6 +945,8 @@ class VideoWidget(QWidget):
             and self.section_stop is not None
         ):
             self.TrackBTN.setEnabled(True)
+        else:
+            self.TrackBTN.setEnabled(False)
 
         # reload
         self.ReloadCurrentFrame()
@@ -943,7 +991,11 @@ class VideoWidget(QWidget):
 
     def pickPointStart(self):
         """Waits for a signal generated by VidLBL with the coordinates"""
-        if self.camera is None or self.section_start is None:
+        if (
+            self.camera is None
+            or self.section_start is None
+            and self.section_stop is None
+        ):
             return
         # disconnect all signals
         try:
@@ -963,7 +1015,11 @@ class VideoWidget(QWidget):
 
     def pickRectStart(self):
         """Waits for a signal generated by VidLBL with coordinates"""
-        if self.camera is None or self.section_start is None:
+        if (
+            self.camera is None
+            or self.section_start is None
+            and self.section_stop is None
+        ):
             return
         if self.PickRectangleBTN.isChecked():
             self.VidLBL.moving.connect(lambda x, y: self.resizeRectangle(x, y))
@@ -985,14 +1041,22 @@ class VideoWidget(QWidget):
 
     def initRectangle(self, x, y):
         """Initializes the rectangle when the mouse button is pressed"""
-        if self.camera is None or self.section_start is None:
+        if (
+            self.camera is None
+            or self.section_start is None
+            or self.section_stop is None
+        ):
             return
         x, y = self.relative_to_cv(x, y)
         self.rect_tmp = (x, y, x, y)
 
     def resizeRectangle(self, x, y):
-        """Updates the rectangle when the mosue is moving"""
-        if self.camera is None or self.section_start is None:
+        """Updates the rectangle when the mouse is moving"""
+        if (
+            self.camera is None
+            or self.section_start is None
+            or self.section_stop is None
+        ):
             return
         x1, y1 = self.relative_to_cv(x, y)
         x0, y0, _, _ = self.rect_tmp
@@ -1000,7 +1064,12 @@ class VideoWidget(QWidget):
         self.ReloadCurrentFrame()
 
     def saveRectangle(self, x, y):
-        if self.camera is None or self.section_start is None:
+        """Saves drawn rectangle"""
+        if (
+            self.camera is None
+            or self.section_start is None
+            or self.section_stop is None
+        ):
             return
         x1, y1 = self.relative_to_cv(x, y)
         x0, y0, _, _ = self.rect_tmp
@@ -1018,6 +1087,7 @@ class VideoWidget(QWidget):
         self.PickPointBTN.setChecked(False)
 
     def deleteObject(self, name):
+        """Deletes the selected object from memory"""
         index = next(
             (i for i, item in enumerate(self.objects_to_track) if item.name == name), -1
         )
@@ -1035,6 +1105,7 @@ class VideoWidget(QWidget):
         self.ReloadCurrentFrame()
 
     def changeObjectDisplay(self, name):
+        """Changes the visibility of the selected object"""
         index = next(
             (i for i, item in enumerate(self.objects_to_track) if item.name == name), -1
         )
@@ -1042,7 +1113,12 @@ class VideoWidget(QWidget):
         self.ReloadCurrentFrame()
 
     def setRuler(self):
-        if self.camera is None or self.section_start is None:
+        """Reorganises the GUI to make ruler control buttons visible connects mouse movement signals"""
+        if (
+            self.camera is None
+            or self.section_start is None
+            or self.section_stop is None
+        ):
             return
         self.VidLBL.press.connect(lambda x, y: self.setRulerStart(x, y))
         self.VidLBL.moving.connect(lambda x, y: self.setRulerMove(x, y))
@@ -1053,7 +1129,12 @@ class VideoWidget(QWidget):
         self.mmLNE.setVisible(True)
 
     def setRulerStart(self, x, y):
-        if self.camera is None or self.section_start is None:
+        """Captures the starting point of the ruler"""
+        if (
+            self.camera is None
+            or self.section_start is None
+            or self.section_stop is None
+        ):
             return
         self.ruler.clear()
         x0, y0 = self.relative_to_cv(x, y)
@@ -1061,7 +1142,12 @@ class VideoWidget(QWidget):
         self.ReloadCurrentFrame()
 
     def setRulerMove(self, x, y):
-        if self.camera is None or self.section_start is None:
+        """Refreshes the endpoint of the ruler"""
+        if (
+            self.camera is None
+            or self.section_start is None
+            or self.section_stop is None
+        ):
             return
         self.ruler.rdy = False
         x1, y1 = self.relative_to_cv(x, y)
@@ -1069,6 +1155,7 @@ class VideoWidget(QWidget):
         self.ReloadCurrentFrame()
 
     def saveRuler(self):
+        """Saves the ruler drawn by the user"""
         input = self.mmLNE.text()
         if not self.ruler.displayable() or input == "":
             return
@@ -1094,6 +1181,7 @@ class VideoWidget(QWidget):
             pass
 
     def removeRuler(self):
+        """Removes the ruler"""
         self.ruler.reset()
         self.setRulerBTN.setVisible(True)
         self.saveRulerBTN.setVisible(False)
@@ -1118,6 +1206,7 @@ class VideoWidget(QWidget):
         self.ReloadCurrentFrame()
 
     def changeRulerVisibility(self):
+        """Hides/Shows the ruler in the video"""
         if self.ruler.visible:
             self.ruler.visible = False
             self.changeRulerVisibilityBTN.setText("Show")
@@ -1127,6 +1216,7 @@ class VideoWidget(QWidget):
         self.ReloadCurrentFrame()
 
     def showTrackingSettings(self):
+        """Displays the dialog with the tracking settings"""
         if self.settingsDialog.exec_():
             tracker_type = self.settingsDialog.tracker_type()
             zoom = self.settingsDialog.zoom()
@@ -1134,6 +1224,7 @@ class VideoWidget(QWidget):
             self.runTracker(tracker_type, zoom, rotation)
 
     def eventFilter(self, source, event):
+        """Enables users to change X and Y offsets with the W-A-S-D butttons"""
         if event.type() == QEvent.KeyPress:
             key = event.key()
             if key == Qt.Key_W:
@@ -1147,6 +1238,7 @@ class VideoWidget(QWidget):
         return super(VideoWidget, self).eventFilter(source, event)
 
     def runTracker(self, tracker_type, zoom, rotation):
+        """Runs the seleted tracking algorithm with the help of a QThread"""
         self.tracker = TrackingThread(
             self.objects_to_track,
             self.camera,
@@ -1163,6 +1255,7 @@ class VideoWidget(QWidget):
         self.progressDialog.show()
         self.progressDialog.rejected.connect(self.tracker.cancel)
         self.tracker.finished.connect(self.progressDialog.accept)
+        # csak akkor ha sikeres volt a tracking
         self.mode = True
 
 
@@ -1178,15 +1271,18 @@ def crop_frame(frame, x_offset, y_offset, zoom):
 
 
 def gui2tracker(rectangle):
+    """Converts the rectangle representation from the gui to the tracker (x0,y0,x1,y1)->(x,y,w,h)"""
     x1, y1, x2, y2 = rectangle
     return (min(x1, x2), min(y1, y2), abs(x2 - x1), abs(y2 - y1))
 
 
 def tracker2gui(rectangle):
+    """Converts the rectangle representation from the tracker to the gui (x,y,w,h)->(x0,y0,x1,y1)"""
     x, y, w, h = rectangle
-    return (x, y, x + w, y + h)
+    return (int(x), int(y), int(x + w), int(y + h))
 
 
+# run the application
 if __name__ == "__main__":
     App = QApplication(sys.argv)
     root = VideoWidget()
