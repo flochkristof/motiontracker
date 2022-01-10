@@ -409,6 +409,7 @@ class VideoWidget(QWidget):
         )
         self.PropGB.setVisible(True)
         self.OpenBTN.setVisible(False)
+        self.VidLBL.wheel.connect(self.changeZoom)
 
         self.timer.timeout.connect(self.nextFrame)
         self.nextFrame()
@@ -420,6 +421,7 @@ class VideoWidget(QWidget):
         self.PropGB.setVisible(False)
         self.VidTimeLBL.setText("-/-")
         self.VidLBL.setPixmap(QPixmap("images/video.svg"))
+        self.VidLBL.disconnect()
         self.OpenBTN.setVisible(True)
         self.ObjectLWG.clear()
         self.removeRuler()
@@ -1021,6 +1023,24 @@ class VideoWidget(QWidget):
             and self.section_stop is None
         ):
             return
+
+                # disconnect all signals
+        try:
+            self.VidLBL.moving.disconnect()
+        except:
+            pass
+        try:
+            self.VidLBL.press.disconnect()
+        except:
+            pass
+        try:
+            self.VidLBL.release.disconnect()
+        except:
+            pass
+
+        if self.PickPointBTN.isChecked():
+            self.PickPointBTN.setChecked(False)
+
         if self.PickRectangleBTN.isChecked():
             self.VidLBL.moving.connect(lambda x, y: self.resizeRectangle(x, y))
             self.VidLBL.press.connect(lambda x, y: self.initRectangle(x, y))
@@ -1228,13 +1248,13 @@ class VideoWidget(QWidget):
         if event.type() == QEvent.KeyPress:
             key = event.key()
             if key == Qt.Key_W:
-                self.changeYoffset(-1)
+                self.changeYoffset(-5)
             elif key == Qt.Key_A:
-                self.changeXoffset(-1)
+                self.changeXoffset(-5)
             elif key == Qt.Key_S:
-                self.changeYoffset(1)
+                self.changeYoffset(5)
             elif key == Qt.Key_D:
-                self.changeXoffset(1)
+                self.changeXoffset(5)
         return super(VideoWidget, self).eventFilter(source, event)
 
     def runTracker(self, tracker_type, zoom, rotation):
@@ -1251,12 +1271,15 @@ class VideoWidget(QWidget):
         )
         self.tracker.progressChanged.connect(self.progressDialog.updateBar)
         self.tracker.newObject.connect(self.progressDialog.updateName)
+        self.tracker.success.connect(self.trackingSucceeded)
         self.tracker.start()
         self.progressDialog.show()
         self.progressDialog.rejected.connect(self.tracker.cancel)
         self.tracker.finished.connect(self.progressDialog.accept)
-        # csak akkor ha sikeres volt a tracking
-        self.mode = True
+
+
+    def trackingSucceeded(self):
+        self.mode=True
 
 
 def crop_frame(frame, x_offset, y_offset, zoom):

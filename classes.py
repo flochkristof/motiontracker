@@ -17,8 +17,8 @@ from PyQt5.QtWidgets import (
     QComboBox,
     QCheckBox,
 )
-from PyQt5.QtGui import QMouseEvent, QCursor
-from PyQt5.QtCore import QThread, Qt, pyqtSignal, QEventLoop, QPoint
+from PyQt5.QtGui import QMouseEvent, QCursor, QWheelEvent
+from PyQt5.QtCore import QLine, QThread, Qt, pyqtSignal, QEventLoop, QPoint, right
 import math
 import cv2
 
@@ -27,7 +27,7 @@ class TrackingThread(QThread):
     """QThread class responsible for running the tracking algorithm"""
     progressChanged = pyqtSignal(int)
     newObject = pyqtSignal(str)
-
+    success=pyqtSignal()
     def __init__(
         self, objects_to_track, camera, start, stop, tracker_type, zoom, rotation, fps
     ):
@@ -130,6 +130,8 @@ class TrackingThread(QThread):
             if not self.is_running:
                 break
         self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start)
+        if self.is_running:
+            self.success.emit()
 
 
 class Motion:
@@ -217,11 +219,20 @@ class VideoLabel(QLabel):
     press = pyqtSignal(float, float)
     moving = pyqtSignal(float, float)
     release = pyqtSignal(float, float)
+    wheel=pyqtSignal(float)
 
     def __init__(self, parent=None):
         self.press_pos = None
         self.current_pos = None
         super(VideoLabel, self).__init__(parent)
+
+
+    def wheelEvent(self, a0: QWheelEvent):
+        if a0.angleDelta().y()>0:
+            self.wheel.emit(-0.1)
+        else:
+            self.wheel.emit(0.1)
+        return super().wheelEvent(a0)
 
     def mousePressEvent(self, ev: QMouseEvent):
         x_label, y_label, = ev.x(), ev.y()
@@ -318,10 +329,156 @@ class TrackingSettings(QDialog):
         super().__init__(parent)
         self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
         self.setWindowTitle("Tracking details")
+        
+        ### Additional Features ###
+        self.rotationCHB=QCheckBox("Track rotation")
+        self.sizeCHB.stateChanged.connect(self.openRotationSettings)
+        self.sizeCHB=QCheckBox("Track size change")
+        self.sizeCHB.stateChanged(self.sizeMode)
+        
+        featureLayout=QVBoxLayout()
+        featureLayout.addWidget(self.rotationCHB)
+        featureLayout.addWidget(self.sizeCHB)
+
+        featureGB=QGroupBox("Additional features to track")
+        featureGB.setLayout(featureLayout)
+
+
+        ### Tracking algorithm ###
+        self.algoritmCMB = QComboBox()
+        self.algoritmCMB.addItems(
+            ["CSRT", "BOOSTING", "MIL", "KCF", "TLD", "MEDIANFLOW", "MOSSE"]
+        )
+
+        self.zoomNotificationLBL=QLabel("Only the CSRT algorithm is capable of handling the size change of an object!")
+        self.zoomNotificationLBL.setVisible(False)
+        algoLayout=QVBoxLayout()
+        algoLayout.addWidget(self.algoritmCMB)
+        algoLayout.addWidget(self.zoomNotificationLBL)
+
+        algoGB=QGroupBox("Tracking algorithm")
+        algoGB.setLayout(algoLayout)
+
+
+        ### Left side veritcal layout ###
+        leftLayout=QVBoxLayout()
+        leftLayout.addWidget(featureGB)
+        leftLayout.addWidget(algoGB)
+
+        
+        ### Real FPS input ###
+        fpsLBL=QLabel("Real FPS:")
+        self.fpsLNE=QLineEdit()
+
+        fpsLayout=QHBoxLayout()
+        fpsLayout.addWidget(fpsLBL)
+        fpsLayout.addWidget(self.fpsLNE)
+
+        ### Filter ###
+        filterLBL=QLabel("Filter")
+        self.filterCMB=QComboBox()
+        
+        filterHLayout=QHBoxLayout()
+        filterHLayout.addWidget(filterLBL)
+        filterHLayout.addWidget(self.filterCMB)
+
+        filterBTN=QPushButton("Filter settings")
+        filterBTN.clicked.connect(self.openFilterSettings)
+
+
+        ### Derivative ###
+        derivativeLBL=QLabel("Derivative:")
+        self.derivativeCMB=QComboBox()
+
+
+        derivativeHLayout=QHBoxLayout()
+        derivativeHLayout.addWidget(derivativeLBL)
+        derivativeHLayout.addWidget(self.derivativeCMB)
+
+        derivativeBTN=QPushButton("Derivative settings")
+        derivativeBTN.clicked.connect(self.openDerivativeSettings)
+
+
+        ### Right side GroupBox ###
+        rightLayout=QVBoxLayout()
+        rightLayout.addLayout(fpsLayout)
+        rightLayout.addLayout(filterHLayout)
+        rightLayout.addWidget(filterBTN)
+        rightLayout.addLayout(derivativeHLayout)
+        rightLayout.addWidget(derivativeBTN)
+        
+        rightGB=QGroupBox("Post-processing settings")
+        rightGB.setLayout(rightLayout)
+
+
+        ### Settings horizontal layout ###
+        settingsLayout=QHBoxLayout()
+        settingsLayout.addLayout(leftLayout)
+        settingsLayout.addWidget(rightGB)
+
+
+        ### TRACK button and final layout
+        trackBTN = QPushButton("Track")
+        trackBTN.clicked.connect(self.accept)
+        
+        mainlayout=QVBoxLayout()
+        mainlayout.addLayout(settingsLayout)
+        mainlayout.addWidget(trackBTN)
+
+        self.setLayout(mainlayout)
+
+
+
+    def openRotationSettings(self):
+        pass
+
+
+    def openFilterSettings(self):
+        pass
+
+
+    def openDerivativeSettings(self):
+        pass
+
+
+    def sizeMode(self):
+        pass
+
+
+    def tracker_type(self):
+        return self.algoritmCMB.currentText()
+
+
+
+    def zoom(self):
+        return self.sizeCHB.isChecked()
+
+
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        """
         trackLBL = QLabel("Tracking algorithm:")
         self.algoritmCMB = QComboBox()
         self.algoritmCMB.addItems(
-            ["BOOSTING", "MIL", "KCF", "TLD", "MEDIANFLOW", "GOTURN", "MOSSE", "CSRT"]
+            ["CSRT", "BOOSTING", "MIL", "KCF", "TLD", "MEDIANFLOW", "MOSSE"]
         )
         algoLayout = QHBoxLayout()
         algoLayout.addWidget(trackLBL)
@@ -380,7 +537,7 @@ class TrackingSettings(QDialog):
         return self.XYcoordinatesCHB.isChecked()
 
     def rotation(self):
-        return self.rotationCHB.isChecked()
+        return self.rotationCHB.isChecked()"""
 
 
 class TrackingProgress(QDialog):
