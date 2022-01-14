@@ -1,3 +1,4 @@
+from dis import Instruction
 from PyQt5.QtWidgets import (
     QDialog,
     QGroupBox,
@@ -16,122 +17,13 @@ from PyQt5.QtWidgets import (
     QSizePolicy,
     QComboBox,
     QCheckBox,
+    QMessageBox
 )
-from PyQt5.QtGui import QMouseEvent, QCursor, QWheelEvent
+from PyQt5.QtGui import QMouseEvent, QCursor, QWheelEvent, QIntValidator
 from PyQt5.QtCore import QLine, QThread, Qt, pyqtSignal, QEventLoop, QPoint, right
 import math
 import cv2
-
-
-class TrackingThread(QThread):
-    """QThread class responsible for running the tracking algorithm"""
-    progressChanged = pyqtSignal(int)
-    newObject = pyqtSignal(str)
-    success=pyqtSignal()
-    def __init__(
-        self, objects_to_track, camera, start, stop, tracker_type, zoom, rotation, fps
-    ):
-        self.objects_to_track = objects_to_track
-        self.camera = camera
-        self.section_start = start
-        self.section_stop = stop
-        self.tracker_type = tracker_type
-        self.zoom = zoom
-        self.rotation = rotation
-        self.fps = fps
-        self.progress = "0"
-        self.is_running = True
-        super(TrackingThread, self).__init__()
-
-    def cancel(self):
-        self.is_running = False
-
-    def run(self):
-        for M in self.objects_to_track:
-            # emit the name of the tracked object
-            self.newObject.emit(M.name)
-
-            # reset previous data
-            M.timestamp = []
-            M.rectangle_path = []  
-            M.point_path = []
-            M.size_change = []
-
-            # creating the tracker
-            if self.tracker_type == "BOOSTING":
-                tracker = cv2.legacy.TrackerBoosting_create()
-            if self.tracker_type == "MIL":
-                tracker = cv2.legacy.TrackerMIL_create()
-            if self.tracker_type == "KCF":
-                tracker = cv2.TrackerKCF_create()
-            if self.tracker_type == "TLD":
-                tracker = cv2.legacy.TrackerTLD_create()
-            if self.tracker_type == "MEDIANFLOW":
-                tracker = cv2.legacy.TrackerMedianFlow_create()
-            if self.tracker_type == "GOTURN":
-                tracker = cv2.TrackerGOTURN_create()
-            if self.tracker_type == "MOSSE":
-                tracker = cv2.legacy.TrackerMOSSE_create()
-            if self.tracker_type == "CSRT":
-                tracker = cv2.TrackerCSRT_create()
-
-            # set camera to start frame, get the fps
-            self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start)
-
-            # initialize tracker
-            ret, frame = self.camera.read()
-            if not ret:
-                # hibakezelés
-                return
-            tracker.init(frame, M.rectangle)
-
-            # for the calculation of the point
-            dy = (M.point[1] - M.rectangle[1]) / M.rectangle[3]
-            dx = (M.point[0] - M.rectangle[0]) / M.rectangle[2]
-
-            # for zoom
-            w0=M.rectangle[2]
-            h0=M.rectangle[3]
-
-            # tracking
-            for i in range(int(self.section_stop - self.section_start)):
-                # read the next frame
-                ret, frame = self.camera.read()
-                if not ret:
-                    # hibakezelés
-                    break
-
-                # update the tracker
-                ret, roi_box = tracker.update(frame)
-                if ret:
-
-                    M.rectangle_path.append(roi_box)
-                    M.point_path.append(
-                        (roi_box[0] + dx * roi_box[2], roi_box[1] + dy * roi_box[3])
-                    )
-                    M.timestamp.append((i + 1) / self.fps)
-                    #M.size_change.append((roi_box[2]/w0+roi_box[3]/h0)/2)
-                    #print(f"{M.size_change[-1]}")
-                    self.progress = math.ceil(
-                        i / (self.section_stop - self.section_start) * 100
-                    )
-                    self.progressChanged.emit(self.progress)
-                    # self.status = f"Tracking ... {self.progress}"
-                else:
-                    pass
-                    # self.status = "ERROR: Tracker update unsuccessful!"
-                    # self.is_running = False
-
-                if not self.is_running:
-                    M.rectangle_path = []
-                    M.timestamp = []
-                    break
-
-            if not self.is_running:
-                break
-        self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start)
-        if self.is_running:
-            self.success.emit()
+import numpy as np
 
 
 class Motion:
@@ -150,6 +42,25 @@ class Motion:
         self.rectangle_path = []
         self.point_path = []
         self.size_change=[]
+
+
+
+class Rotation:
+    def __init__(self, P1, P2):
+        self.P1=P1
+        self.P2=P2
+        self.rotation=[]
+    
+
+    def calculate(self):
+        P = np.vectorize(lambda P: P.point_path)
+        
+        path1=P(self.P1)
+        path2=P(self.P2)
+        rotation_init=np.arctan2(self.P2.point[1]-self.P1.point[1],self.P2.point[0]-self.P1.point[0])
+        rot_array=-(np.arctan2(path2[:,1]-path1[:,1],path2[:,0]-path1[:,0])-rotation_init)/np.pi*180
+        self.rotation=rot_array.tolist()
+
 
 
 class Ruler:
@@ -212,6 +123,152 @@ class Ruler:
         self.y1 = None
         self.mm = None
         self.mm_per_pix = None
+
+
+
+
+class TrackingThread(QThread):
+    """QThread class responsible for running the tracking algorithm"""
+    progressChanged = pyqtSignal(int)
+    newObject = pyqtSignal(str)
+    success=pyqtSignal()
+    rotation_calculated=pyqtSignal(Rotation)
+
+    def __init__(
+        self, objects_to_track, camera, start, stop, tracker_type, size, rotation_endpoints, fps
+    ):
+        self.objects_to_track = objects_to_track
+        self.camera = camera
+        self.section_start = start
+        self.section_stop = stop
+        self.tracker_type = tracker_type
+        self.size = size
+        self.rotation_endpoints = rotation_endpoints
+        self.fps = fps
+        self.progress = "0"
+        self.is_running = True
+        super(TrackingThread, self).__init__()
+
+    def cancel(self):
+        self.is_running = False
+
+    def run(self):
+        for M in self.objects_to_track:
+            # emit the name of the tracked object
+            self.newObject.emit(M.name)
+
+            # reset previous data
+            M.timestamp = []
+            M.rectangle_path = []  
+            M.point_path = []
+            M.size_change = []
+
+            # creating the tracker
+            if self.tracker_type == "BOOSTING":
+                tracker = cv2.legacy.TrackerBoosting_create()
+            if self.tracker_type == "MIL":
+                tracker = cv2.legacy.TrackerMIL_create()
+            if self.tracker_type == "KCF":
+                tracker = cv2.TrackerKCF_create()
+            if self.tracker_type == "TLD":
+                tracker = cv2.legacy.TrackerTLD_create()
+            if self.tracker_type == "MEDIANFLOW":
+                tracker = cv2.legacy.TrackerMedianFlow_create()
+            if self.tracker_type == "GOTURN":
+                tracker = cv2.TrackerGOTURN_create()
+            if self.tracker_type == "MOSSE":
+                tracker = cv2.legacy.TrackerMOSSE_create()
+            if self.tracker_type == "CSRT":
+                tracker = cv2.TrackerCSRT_create()
+
+            # set camera to start frame, get the fps
+            self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start)
+
+            # initialize tracker
+            ret, frame = self.camera.read()
+            if not ret:
+                # hibakezelés
+                return
+            tracker.init(frame, M.rectangle)
+
+            # for the calculation of the point
+            dy = (M.point[1] - M.rectangle[1]) / M.rectangle[3]
+            dx = (M.point[0] - M.rectangle[0]) / M.rectangle[2]
+
+            # for zoom
+            w0=M.rectangle[2]
+            h0=M.rectangle[3]
+
+            # tracking
+            for i in range(int(self.section_stop - self.section_start)):
+                # read the next frame
+                ret, frame = self.camera.read()
+                if not ret:
+                    # hibakezelés, nem jó a beolvasott frame, ez akár elő is fordulhat!
+                    break
+
+                # update the tracker
+                ret, roi_box = tracker.update(frame)
+                if ret:
+                    # traditional tracking
+                    M.rectangle_path.append(roi_box)
+                    M.point_path.append(
+                        (roi_box[0] + dx * roi_box[2], roi_box[1] + dy * roi_box[3])
+                    )
+
+
+                    # change of size
+                    if self.size:
+                        M.size_change.append((roi_box[2]/w0+roi_box[3]/h0)/2)
+                    M.timestamp.append((i + 1) / self.fps)
+
+                    #progress
+                    self.progress = math.ceil(
+                        i / (self.section_stop - self.section_start) * 100
+                    )
+                    self.progressChanged.emit(self.progress)
+                    # self.status = f"Tracking ... {self.progress}"
+                else:
+                    #ha a frame jó de a tracker sikertelen akkor gond van, hibakezelés
+                    pass
+                    # self.status = "ERROR: Tracker update unsuccessful!"
+                    # self.is_running = False
+
+                if not self.is_running:
+                    M.rectangle_path = []
+                    M.timestamp = []
+                    break
+
+            if not self.is_running:
+                break
+
+            ### POST-PROCESSING START ###
+            # HERE COMES THE FILTERS
+
+        ### end of object-by-object for loop
+
+        # rotation tracking
+        if len(self.rotation_endpoints)>0:
+            self.newObject.emit("Rotation")
+            p1_index = next((i for i, item in enumerate(self.objects_to_track) if item.name == self.rotation_endpoints[0]), -1)
+            p2_index = next((i for i, item in enumerate(self.objects_to_track) if item.name == self.rotation_endpoints[1]), -1)
+            if p1_index!=-1 and p2_index!=-1:
+                P1=self.objects_to_track[p1_index]
+                P2=self.objects_to_track[p2_index]
+                self.newObject.emit("Rotation between :"+P1.name+" and "+P2.name)
+                R=Rotation(P1, P2)
+                R.calculate()
+                self.rotation_calculated.emit(R)
+
+            else:
+                #error, ennek nem szabadna megtörténnie
+                pass
+
+        self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start)
+        if self.is_running:
+            self.success.emit()
+
+
 
 
 class VideoLabel(QLabel):
@@ -329,12 +386,13 @@ class TrackingSettings(QDialog):
         super().__init__(parent)
         self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
         self.setWindowTitle("Tracking details")
+        self.setModal(True)
         
         ### Additional Features ###
         self.rotationCHB=QCheckBox("Track rotation")
-        self.sizeCHB.stateChanged.connect(self.openRotationSettings)
+        self.rotationCHB.stateChanged.connect(self.openRotationSettings)
         self.sizeCHB=QCheckBox("Track size change")
-        self.sizeCHB.stateChanged(self.sizeMode)
+        self.sizeCHB.stateChanged.connect(self.sizeMode)
         
         featureLayout=QVBoxLayout()
         featureLayout.addWidget(self.rotationCHB)
@@ -369,6 +427,7 @@ class TrackingSettings(QDialog):
         ### Real FPS input ###
         fpsLBL=QLabel("Real FPS:")
         self.fpsLNE=QLineEdit()
+        self.fpsLNE.setValidator(QIntValidator(0, 1000000))
 
         fpsLayout=QHBoxLayout()
         fpsLayout.addWidget(fpsLBL)
@@ -428,116 +487,115 @@ class TrackingSettings(QDialog):
         self.setLayout(mainlayout)
 
 
+        ### Rotation settings dialog ####
+        self.rotationSettings=RotationSettings()
+        self.filterSettings=FilterSettings()
+        self.derivativeSettings=DerivativeSettings()
+
+
 
     def openRotationSettings(self):
-        pass
+        if self.rotationCHB.isChecked():
+            if self.rotationSettings.p1CMB.count()>=2:
+                self.rotationSettings.exec_()
+            else:
+                self.rotationCHB.setCheckState(Qt.Unchecked)
+                msg=QMessageBox()
+                msg.setWindowTitle("Not enough points!")
+                msg.setText("You need at least two points for rotation tracking!")
+                msg.setIcon(QMessageBox.Warning)
+                msg.exec_()
+                self.rotationCHB.setChecked(False)
+        
 
 
     def openFilterSettings(self):
-        pass
+        # collect data
+        self.filterSettings.show()
 
 
     def openDerivativeSettings(self):
-        pass
+        # collect data
+        self.derivativeSettings.show()
 
 
     def sizeMode(self):
-        pass
+        if self.sizeCHB.isChecked():
+            self.zoomNotificationLBL.setVisible(True)
+            self.algoritmCMB.setCurrentText("CSRT")
+            self.algoritmCMB.setEditable(False)
+            self.algoritmCMB.setEnabled(False)
+        else:
+            self.zoomNotificationLBL.setVisible(False)
+            self.algoritmCMB.setEnabled(True)
 
 
     def tracker_type(self):
         return self.algoritmCMB.currentText()
 
 
-
-    def zoom(self):
+    def size_change(self):
         return self.sizeCHB.isChecked()
+
+    
+    def rotation(self):
+        return self.rotationCHB
+
+
+
+    def fps(self):
+        return self.fpsLNE.text()
 
 
     
+class RotationSettings(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
+        self.setWindowTitle("Rotation settings")
+        self.setModal(True)
+        instuctionLBL=QLabel("Select two points for for tracking")
+        self.warningLBL=QLabel("You must select two different points!")
+        self.warningLBL.setVisible(False)
+        okBTN=QPushButton("Save")
+        okBTN.clicked.connect(self.validate)
+        self.p1CMB=QComboBox()
+        self.p2CMB=QComboBox()
+        layout=QVBoxLayout()
+        layout.addWidget(instuctionLBL)
+        layout.addWidget(self.p1CMB)
+        layout.addWidget(self.p2CMB)
+        layout.addWidget(okBTN)
+        layout.addWidget(self.warningLBL)
+        self.setLayout(layout)
+
+    def validate(self):
+        if self.p1CMB.currentText()!=self.p2CMB.currentText():
+            self.accept()
+        else:
+            self.warningLBL.setVisible(True)
+    
+
+    def get_endpoints(self):
+        return (self.p1CMB.currentText(), self.p2CMB.currentText())
+
+        
+
+class FilterSettings(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
+        self.setWindowTitle("Filter settings")
+        self.setModal(True)
 
 
+class DerivativeSettings(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
+        self.setWindowTitle("Derivative settings")
+        self.setModal(True)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        """
-        trackLBL = QLabel("Tracking algorithm:")
-        self.algoritmCMB = QComboBox()
-        self.algoritmCMB.addItems(
-            ["CSRT", "BOOSTING", "MIL", "KCF", "TLD", "MEDIANFLOW", "MOSSE"]
-        )
-        algoLayout = QHBoxLayout()
-        algoLayout.addWidget(trackLBL)
-        algoLayout.addWidget(self.algoritmCMB)
-
-        propLayout = QHBoxLayout()
-        propLBL = QLabel("Properties to track:")
-        propLabelLayout = QVBoxLayout()
-        propLabelLayout.addWidget(propLBL)
-        propLabelLayout.addItem(
-            QSpacerItem(0, 10, QSizePolicy.Minimum, QSizePolicy.Expanding)
-        )
-        propCheckLayout = QVBoxLayout()
-        self.XYcoordinatesCHB = QCheckBox("X and Y coordinates")
-        self.rotationCHB = QCheckBox("Rotation around Z")
-        self.zoomCHB = QCheckBox("Zoom")
-        propCheckLayout.addWidget(self.XYcoordinatesCHB)
-        propCheckLayout.addWidget(self.rotationCHB)
-        propCheckLayout.addWidget(self.zoomCHB)
-
-        propLayout.addLayout(propLabelLayout)
-        propLayout.addLayout(propCheckLayout)
-
-        trackLayout = QVBoxLayout()
-        trackLayout.addLayout(algoLayout)
-        trackLayout.addLayout(propLayout)
-
-        trackGB = QGroupBox()
-        trackGB.setTitle("Tracking settings")
-        trackGB.setLayout(trackLayout)
-
-        postprocessGB = QGroupBox()
-        postprocessGB.setTitle("Post-processing settings")
-
-        groupBoxLayout = QHBoxLayout()
-        groupBoxLayout.addWidget(trackGB)
-        groupBoxLayout.addWidget(postprocessGB)
-
-        dialogLayout = QVBoxLayout()
-        dialogLayout.addLayout(groupBoxLayout)
-
-        startBTN = QPushButton()
-        startBTN.setText("Start")
-        startBTN.clicked.connect(self.accept)
-        dialogLayout.addWidget(startBTN)
-
-        self.setLayout(dialogLayout)
-
-    def tracker_type(self):
-        return self.algoritmCMB.currentText()
-
-    def zoom(self):
-        return self.zoomCHB.isChecked()
-
-    def xy(self):
-        return self.XYcoordinatesCHB.isChecked()
-
-    def rotation(self):
-        return self.rotationCHB.isChecked()"""
 
 
 class TrackingProgress(QDialog):

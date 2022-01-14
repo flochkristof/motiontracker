@@ -51,6 +51,7 @@ class VideoWidget(QWidget):
         self.video_width = None
         self.video_height = None
         self.objects_to_track = []
+        self.rotations=[]
         self.point_tmp = None
         self.rect_tmp = None  # x0, y0, x1, y1
         self.ruler = Ruler()
@@ -126,6 +127,7 @@ class VideoWidget(QWidget):
         # Adding points to track
         self.NewObjectBTN = QPushButton()
         self.NewObjectBTN.setText("Add new point")
+        self.NewObjectBTN.setFixedHeight(50)
         self.NewObjectBTN.clicked.connect(self.addNewObject)
 
         self.NameLNE = QLineEdit()
@@ -175,6 +177,7 @@ class VideoWidget(QWidget):
         ObjectsGB.setTitle("Objects to track")
         ObjectsGB.setLayout(self.ObjectsLayout)
         ObjectsGB.setFixedWidth(200)
+        ObjectsGB.setFixedHeight(200)
 
         # Video player controller buttons
         self.StartPauseBTN = QPushButton()
@@ -426,6 +429,9 @@ class VideoWidget(QWidget):
         self.ObjectLWG.clear()
         self.removeRuler()
         self.cancelObject()
+        self.ObjectLWG.clear()
+        self.settingsDialog.rotationSettings.p1CMB.clear()
+        self.settingsDialog.rotationSettings.p2CMB.clear()
 
         # reset stored properties
         self.camera = None
@@ -511,9 +517,9 @@ class VideoWidget(QWidget):
 
             # playback
             if self.mode:
-                # print(
-                #    f"pos:{pos}, start:{self.section_start}, stop:{self.section_stop}"
-                # )
+                print(
+                    f"deg:{self.rotations[0].rotation[int(pos-self.section_start-1)]}"
+                 )
                 for obj in self.objects_to_track:
                     if obj.visible:
                         if (pos >= self.section_start) and (pos <= self.section_stop):
@@ -883,7 +889,7 @@ class VideoWidget(QWidget):
         self.PickPointBTN.setVisible(True)
         self.PickRectangleBTN.setVisible(True)
         self.SaveBTN.setVisible(True)
-        self.CancelBTN.setVisible(True)
+        self.CancelBTN.setVisible(True) 
 
         self.camera.set(cv2.CAP_PROP_POS_FRAMES, (self.section_start - 1))
         self.nextFrame()
@@ -922,6 +928,9 @@ class VideoWidget(QWidget):
 
         # display in listwidget
         self.ObjectLWG.addItem(M.name)
+
+        self.settingsDialog.rotationSettings.p1CMB.addItem(M.name)
+        self.settingsDialog.rotationSettings.p2CMB.addItem(M.name)
 
         # reorganize widgets
         self.NameLNE.setVisible(False)
@@ -1115,6 +1124,9 @@ class VideoWidget(QWidget):
         i = self.ObjectLWG.takeItem(index)
         del i
 
+        self.settingsDialog.rotationSettings.p1CMB.removeItem(index)
+        self.settingsDialog.rotationSettings.p2CMB.removeItem(index)
+
         # check if tracking is still available
         if (
             len(self.objects_to_track) == 0
@@ -1239,9 +1251,26 @@ class VideoWidget(QWidget):
         """Displays the dialog with the tracking settings"""
         if self.settingsDialog.exec_():
             tracker_type = self.settingsDialog.tracker_type()
-            zoom = self.settingsDialog.zoom()
-            rotation = self.settingsDialog.rotation()
-            self.runTracker(tracker_type, zoom, rotation)
+            # rotation
+            if self.settingsDialog.rotation():
+                endpoints=self.settingsDialog.rotationSettings.get_endpoints()
+            else:
+                endpoints=[]
+            
+            # size change
+            if self.settingsDialog.sizeCHB.isChecked():
+                size=True
+            else: 
+                size=False
+            
+            # fps
+            if self.settingsDialog.fps() != "":
+                fps=int(self.settingsDialog.fps())
+            else:
+                fps=self.fps
+
+            # running the tracker
+            self.runTracker(tracker_type, size, endpoints, fps)
 
     def eventFilter(self, source, event):
         """Enables users to change X and Y offsets with the W-A-S-D butttons"""
@@ -1257,7 +1286,7 @@ class VideoWidget(QWidget):
                 self.changeXoffset(5)
         return super(VideoWidget, self).eventFilter(source, event)
 
-    def runTracker(self, tracker_type, zoom, rotation):
+    def runTracker(self, tracker_type, size, endpoints, fps):
         """Runs the seleted tracking algorithm with the help of a QThread"""
         self.tracker = TrackingThread(
             self.objects_to_track,
@@ -1265,13 +1294,14 @@ class VideoWidget(QWidget):
             self.section_start,
             self.section_stop,
             tracker_type,
-            zoom,
-            rotation,
-            self.fps,
+            size,
+            endpoints,
+            fps,
         )
         self.tracker.progressChanged.connect(self.progressDialog.updateBar)
         self.tracker.newObject.connect(self.progressDialog.updateName)
         self.tracker.success.connect(self.trackingSucceeded)
+        self.tracker.rotation_calculated.connect(self.save_rotation)
         self.tracker.start()
         self.progressDialog.show()
         self.progressDialog.rejected.connect(self.tracker.cancel)
@@ -1280,6 +1310,13 @@ class VideoWidget(QWidget):
 
     def trackingSucceeded(self):
         self.mode=True
+        #here comes the reorganizations
+
+    
+    def save_rotation(self, rotation):
+        self.rotations.append(rotation)
+        print(rotation.rotation)
+        # reorganize the wideo widget 
 
 
 def crop_frame(frame, x_offset, y_offset, zoom):
