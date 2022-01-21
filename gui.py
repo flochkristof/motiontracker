@@ -1,14 +1,12 @@
 import sys
+from turtle import position
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 import time
 from PyQt5.QtWidgets import (
     QApplication,
-    QDialog,
-    QDialogButtonBox,
     QLabel,
     QLineEdit,
-    QProgressDialog,
     QSizePolicy,
     QSpacerItem,
     QWidget,
@@ -16,15 +14,18 @@ from PyQt5.QtWidgets import (
     QPushButton,
     QSlider,
     QHBoxLayout,
-    QMainWindow,
     QGridLayout,
     QFileDialog,
     QGroupBox,
-    QListWidget,
+    QMessageBox,
 )
 import cv2
-from classes import (
+from numpy import rad2deg
+from widgets import (
+    ExportDialog,
+    ExportingThread,
     Motion,
+    PlotDialog,
     TrackingSettings,
     TrackingThread,
     VideoLabel,
@@ -33,6 +34,9 @@ from classes import (
     TrackingProgress,
 )  # TimeInputDialog
 from math import floor, ceil
+from funcs import *
+from classes import *
+import pandas as pd
 
 
 class VideoWidget(QWidget):
@@ -47,11 +51,13 @@ class VideoWidget(QWidget):
         self.zoom = 1  # from 1 goes down to 0
         self.section_start = None
         self.section_stop = None
+        self.roi_rect = None
         self.filename = ""
         self.video_width = None
         self.video_height = None
         self.objects_to_track = []
-        self.rotations=[]
+        self.rotations = []
+        self.timestamp = []
         self.point_tmp = None
         self.rect_tmp = None  # x0, y0, x1, y1
         self.ruler = Ruler()
@@ -119,10 +125,10 @@ class VideoWidget(QWidget):
         TrackingSectionLayout = QVBoxLayout()
         TrackingSectionLayout.addLayout(SectionStartLayout)
         TrackingSectionLayout.addLayout(SectionStopLayout)
-        TrackingSectionGB = QGroupBox()
-        TrackingSectionGB.setTitle("Section to track")
-        TrackingSectionGB.setLayout(TrackingSectionLayout)
-        TrackingSectionGB.setFixedWidth(200)
+        self.TrackingSectionGB = QGroupBox()
+        self.TrackingSectionGB.setTitle("Section to track")
+        self.TrackingSectionGB.setLayout(TrackingSectionLayout)
+        self.TrackingSectionGB.setFixedWidth(200)
 
         # Adding points to track
         self.NewObjectBTN = QPushButton()
@@ -173,11 +179,11 @@ class VideoWidget(QWidget):
         self.ObjectsLayout.addWidget(self.CancelBTN)
         self.ObjectsLayout.addWidget(self.ObjectLWG)
 
-        ObjectsGB = QGroupBox()
-        ObjectsGB.setTitle("Objects to track")
-        ObjectsGB.setLayout(self.ObjectsLayout)
-        ObjectsGB.setFixedWidth(200)
-        ObjectsGB.setFixedHeight(200)
+        self.ObjectsGB = QGroupBox()
+        self.ObjectsGB.setTitle("Objects to track")
+        self.ObjectsGB.setLayout(self.ObjectsLayout)
+        self.ObjectsGB.setFixedWidth(200)
+        self.ObjectsGB.setFixedHeight(200)
 
         # Video player controller buttons
         self.StartPauseBTN = QPushButton()
@@ -271,6 +277,7 @@ class VideoWidget(QWidget):
         self.VidTimeLBL.setText("-/-")
         self.VidTimeLBL.setAlignment(Qt.AlignCenter)
         self.VidTimeLBL.setStyleSheet("font-weight: bold; font-size: 14px")
+        self.VidTimeLBL.setFixedWidth(200)
 
         # Add to grid layout
         MoveGridLayout = QGridLayout()
@@ -289,10 +296,10 @@ class VideoWidget(QWidget):
         ZoomControlLayout.addLayout(MoveGridLayout)
         ZoomControlLayout.addLayout(ZoomInOutLayout)
 
-        ZoomControlGB = QGroupBox()
-        ZoomControlGB.setTitle("Zoom control")
-        ZoomControlGB.setLayout(ZoomControlLayout)
-        ZoomControlGB.setFixedWidth(200)
+        self.ZoomControlGB = QGroupBox()
+        self.ZoomControlGB.setTitle("Zoom control")
+        self.ZoomControlGB.setLayout(ZoomControlLayout)
+        self.ZoomControlGB.setFixedWidth(200)
 
         self.mmLNE = QLineEdit()
         self.mmLNE.setValidator(QDoubleValidator(0, 10000, 2))
@@ -333,34 +340,82 @@ class VideoWidget(QWidget):
         RulerLayout.addLayout(RulerControlLayout)
 
         # Ruler groupbox
-        RulerGB = QGroupBox()
-        RulerGB.setTitle("Ruler")
-        RulerGB.setLayout(RulerLayout)
-        RulerGB.setFixedWidth(200)
+        self.RulerGB = QGroupBox()
+        self.RulerGB.setTitle("Ruler")
+        self.RulerGB.setLayout(RulerLayout)
+        self.RulerGB.setFixedWidth(200)
+
+        # Select roi
+        self.setRoiBTN = QPushButton("Set")
+        self.setRoiBTN.clicked.connect(self.setRoi)
+
+        self.saveRoiBTN = QPushButton("Save")
+        self.saveRoiBTN.clicked.connect(self.saveRoi)
+        self.saveRoiBTN.setVisible(False)
+
+        self.delRoiBTN = QPushButton("Delete")
+        self.delRoiBTN.clicked.connect(self.delRoi)
+        self.delRoiBTN.setVisible(False)
+
+        roiLayout = QVBoxLayout()
+        roiLayout.addWidget(self.setRoiBTN)
+        roiLayout.addWidget(self.saveRoiBTN)
+        roiLayout.addWidget(self.delRoiBTN)
+
+        self.roiGB = QGroupBox()
+        self.roiGB.setTitle("Select ROI rectangle")
+        self.roiGB.setLayout(roiLayout)
+        self.roiGB.setFixedWidth(200)
 
         # Track button
         self.TrackBTN = QPushButton()
-        self.TrackBTN.setFixedSize(QSize(200, 60))
+        self.TrackBTN.setFixedSize(QSize(200, 40))
         self.TrackBTN.setText("Track")
         self.TrackBTN.setEnabled(False)
-        self.TrackBTN.setStyleSheet("font-size: 18pt;font-weight: bold;")
+        self.TrackBTN.setStyleSheet("font-size: 16pt; font-weight: bold;")
         self.TrackBTN.clicked.connect(self.showTrackingSettings)
 
-        # SideLayout
-        SideLayout = QVBoxLayout()
-        SideLayout.addWidget(self.OpenBTN)
-        SideLayout.addWidget(self.PropGB)
-        SideLayout.addWidget(TrackingSectionGB)
-        SideLayout.addWidget(ObjectsGB)
-        SideLayout.addWidget(ZoomControlGB)
-        SideLayout.addWidget(RulerGB)
-        SideLayout.addItem(
+        # Rotation
+        addRotBTN = QPushButton("Track rotation")
+
+        # Export and plot button
+        self.exportBTN = QPushButton("Plot - Export")
+        self.exportBTN.clicked.connect(self.showExportDialog)
+        self.exportBTN.setEnabled(False)
+
+        # Video export
+        self.exportVidBTN = QPushButton("Export Video")
+        self.exportVidBTN.clicked.connect(self.exportVideo)
+        self.exportVidBTN.setEnabled(False)
+
+        # Reset all button
+        self.resetAllBTN = QPushButton("Reset ALL")
+        self.resetAllBTN.clicked.connect(self.resetAll)
+        self.exportBTN.setEnabled(False)
+
+        # LSideLayout
+        LSideLayout = QVBoxLayout()
+        LSideLayout.addWidget(self.OpenBTN)
+        LSideLayout.addWidget(self.PropGB)
+        LSideLayout.addWidget(self.TrackingSectionGB)
+        LSideLayout.addWidget(self.ObjectsGB)
+        LSideLayout.addWidget(self.ZoomControlGB)
+        LSideLayout.addWidget(self.RulerGB)
+        LSideLayout.addWidget(self.roiGB)
+        LSideLayout.addItem(
             QSpacerItem(0, 10, QSizePolicy.Minimum, QSizePolicy.Expanding)
         )
-        SideLayout.addWidget(self.TrackBTN)
-        SideLayout.addItem(QSpacerItem(0, 10, QSizePolicy.Fixed))
-        SideLayout.addWidget(self.VidTimeLBL)
-        SideLayout.setContentsMargins(0, 0, 0, 12)
+        LSideLayout.addWidget(self.TrackBTN)
+
+        RSideLayout = QVBoxLayout()
+        RSideLayout.addWidget(self.exportBTN)
+        RSideLayout.addWidget(self.exportVidBTN)
+        RSideLayout.addWidget(self.resetAllBTN)
+        RSideLayout.addItem(
+            QSpacerItem(0, 10, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        )
+        RSideLayout.addWidget(self.VidTimeLBL)
+        RSideLayout.setContentsMargins(0, 0, 0, 12)
 
         # Vertical layout to wrap the player
         VideoControlLayout = QVBoxLayout()
@@ -369,12 +424,15 @@ class VideoWidget(QWidget):
 
         # Horizontal layout with zoom added
         PlayerLayout = QHBoxLayout()
+        PlayerLayout.addLayout(LSideLayout)
         PlayerLayout.addLayout(VideoControlLayout)
-        PlayerLayout.addLayout(SideLayout)
+        PlayerLayout.addLayout(RSideLayout)
 
         # initializing dialogs
         self.settingsDialog = TrackingSettings()
         self.progressDialog = TrackingProgress()
+        self.exportDialog = ExportDialog()
+        # self.PlotDialog = PlotDialog()
 
         # Overall layout
         self.setLayout(PlayerLayout)
@@ -385,7 +443,7 @@ class VideoWidget(QWidget):
             self,
             "Open Video",
             "./",
-            "MP4 file (*.mp4);;MOV file (*.mov);;AVI file (*.avi)",
+            "MP4 file (*.mp4);;MOV file (*.mov);;AVI file (*.avi);; MKV file (*.mkv)",
         )[0]
         if filename != "":
             self.filename = filename
@@ -424,7 +482,10 @@ class VideoWidget(QWidget):
         self.PropGB.setVisible(False)
         self.VidTimeLBL.setText("-/-")
         self.VidLBL.setPixmap(QPixmap("images/video.svg"))
-        self.VidLBL.disconnect()
+        try:
+            self.VidLBL.disconnect()
+        except:
+            pass
         self.OpenBTN.setVisible(True)
         self.ObjectLWG.clear()
         self.removeRuler()
@@ -432,6 +493,8 @@ class VideoWidget(QWidget):
         self.ObjectLWG.clear()
         self.settingsDialog.rotationSettings.p1CMB.clear()
         self.settingsDialog.rotationSettings.p2CMB.clear()
+        self.exportDialog.delete_object("ALL")
+        self.exportDialog.delete_object("ALL")
 
         # reset stored properties
         self.camera = None
@@ -444,6 +507,7 @@ class VideoWidget(QWidget):
         self.video_width = None
         self.video_height = None
         self.objects_to_track = []
+        self.rotations = []
         self.point_tmp = None
         self.rect_tmp = None  # x0, y0, x1, y1
         self.section_stop = None
@@ -471,6 +535,56 @@ class VideoWidget(QWidget):
         else:
             self.timer.stop()
             self.StartPauseBTN.setIcon(QIcon("images/play.svg"))
+
+    def display_objects(self, frame, pos, section_start, section_stop):
+        for obj in self.objects_to_track:
+            if obj.visible:
+                if (pos >= self.section_start) and (pos <= self.section_stop):
+                    if pos == self.section_start:
+                        x, y = obj.point
+                        frame = cv2.drawMarker(
+                            frame, (x, y), (0, 0, 255), 0, thickness=2
+                        )
+                        x0, y0, x1, y1 = tracker2gui(obj.rectangle)
+                        frame = cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 0, 0), 2)
+                        cv2.putText(
+                            frame,
+                            obj.name,
+                            (x0, y0 - 5),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.5,
+                            (255, 0, 0),
+                            1,
+                            cv2.LINE_AA,
+                        )
+                    else:
+                        x, y = obj.point_path[int(pos - self.section_start)]
+                        frame = cv2.drawMarker(
+                            frame, (int(x), int(y)), (0, 0, 255), 0, thickness=2
+                        )
+                        x, y = (
+                            obj.position[int(pos - self.section_start)][0],
+                            obj.position[int(pos - self.section_start)][1],
+                        )
+                        frame = cv2.drawMarker(
+                            frame, (int(x), int(y)), (0, 255, 255), 0, thickness=2,
+                        )
+                        x0, y0, x1, y1 = tracker2gui(
+                            obj.rectangle_path[int(pos - self.section_start - 1)]
+                        )
+                    # print(f"{x0} {y0} {x1} {y1}")
+                    frame = cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 0, 0), 2)
+                    cv2.putText(
+                        frame,
+                        obj.name,
+                        (x0, y0 - 5),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (255, 0, 0),
+                        1,
+                        cv2.LINE_AA,
+                    )
+        return frame
 
     def nextFrame(self):
         """Loads and displays the next frame from the video feed"""
@@ -517,55 +631,74 @@ class VideoWidget(QWidget):
 
             # playback
             if self.mode:
-                print(
-                    f"deg:{self.rotations[0].rotation[int(pos-self.section_start-1)]}"
-                 )
-                for obj in self.objects_to_track:
-                    if obj.visible:
-                        if (pos >= self.section_start) and (pos <= self.section_stop):
-                            if pos == self.section_start:
-                                x, y = obj.point
-                                frame = cv2.drawMarker(
-                                    frame, (x, y), (0, 0, 255), 0, thickness=2
-                                )
-                                x0, y0, x1, y1 = tracker2gui(obj.rectangle)
-                                frame = cv2.rectangle(
-                                    frame, (x0, y0), (x1, y1), (255, 0, 0), 2
-                                )
-                                cv2.putText(
-                                    frame,
-                                    obj.name,
-                                    (x0, y0 - 5),
-                                    cv2.FONT_HERSHEY_SIMPLEX,
-                                    0.5,
-                                    (255, 0, 0),
-                                    1,
-                                    cv2.LINE_AA,
-                                )
-                            else:
-                                x, y = obj.point_path[int(pos - self.section_start - 1)]
-                                frame = cv2.drawMarker(
-                                    frame, (int(x), int(y)), (0, 0, 255), 0, thickness=2
-                                )
-                                x0, y0, x1, y1 = tracker2gui(
-                                    obj.rectangle_path[
-                                        int(pos - self.section_start - 1)
-                                    ]
-                                )
-                            # print(f"{x0} {y0} {x1} {y1}")
-                            frame = cv2.rectangle(
-                                frame, (x0, y0), (x1, y1), (255, 0, 0), 2
-                            )
-                            cv2.putText(
-                                frame,
-                                obj.name,
-                                (x0, y0 - 5),
-                                cv2.FONT_HERSHEY_SIMPLEX,
-                                0.5,
-                                (255, 0, 0),
-                                1,
-                                cv2.LINE_AA,
-                            )
+                # print(
+                #     f"deg:{self.rotations[0].rotation[int(pos-self.section_start-1)]}"
+                # )
+                frame = display_objects(
+                    frame,
+                    pos,
+                    self.section_start,
+                    self.section_stop,
+                    self.objects_to_track,
+                )
+                # frame = self.display_objects(frame, pos)
+                # for obj in self.objects_to_track:
+                #    if obj.visible:
+                #        if (pos >= self.section_start) and (pos <= self.section_stop):
+                #            if pos == self.section_start:
+                #                x, y = obj.point
+                #                frame = cv2.drawMarker(
+                #                    frame, (x, y), (0, 0, 255), 0, thickness=2
+                #                )
+                #                x0, y0, x1, y1 = tracker2gui(obj.rectangle)
+                #                frame = cv2.rectangle(
+                #                    frame, (x0, y0), (x1, y1), (255, 0, 0), 2
+                #                )
+                #                cv2.putText(
+                #                    frame,
+                #                    obj.name,
+                #                    (x0, y0 - 5),
+                #                    cv2.FONT_HERSHEY_SIMPLEX,
+                #                    0.5,
+                #                    (255, 0, 0),
+                #                    1,
+                #                    cv2.LINE_AA,
+                #                )
+                #            else:
+                #                x, y = obj.point_path[int(pos - self.section_start)]
+                #                frame = cv2.drawMarker(
+                #                    frame, (int(x), int(y)), (0, 0, 255), 0, thickness=2
+                #                )
+                #                x, y = (
+                #                    obj.position[int(pos - self.section_start)][0],
+                #                    obj.position[int(pos - self.section_start)][1],
+                #                )
+                #                frame = cv2.drawMarker(
+                #                    frame,
+                #                    (int(x), int(y)),
+                #                    (0, 255, 255),
+                #                    0,
+                #                    thickness=2,
+                #                )
+                #                x0, y0, x1, y1 = tracker2gui(
+                #                    obj.rectangle_path[
+                #                        int(pos - self.section_start - 1)
+                #                    ]
+                #                )
+                #            # print(f"{x0} {y0} {x1} {y1}")
+                #            frame = cv2.rectangle(
+                #                frame, (x0, y0), (x1, y1), (255, 0, 0), 2
+                #            )
+                #            cv2.putText(
+                #                frame,
+                #                obj.name,
+                #                (x0, y0 - 5),
+                #                cv2.FONT_HERSHEY_SIMPLEX,
+                #                0.5,
+                #                (255, 0, 0),
+                #                1,
+                #                cv2.LINE_AA,
+                #            )
 
             frame = crop_frame(frame, self.x_offset, self.y_offset, self.zoom)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -653,6 +786,10 @@ class VideoWidget(QWidget):
                     frame = cv2.circle(
                         frame, (self.ruler.x1, self.ruler.y1), 5, (0, 0, 255), -1
                     )
+                if self.roi_rect is not None:
+                    x0, y0, x1, y1 = self.roi_rect
+                    frame = cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 255, 0), 2)
+
                 frame = crop_frame(frame, self.x_offset, self.y_offset, self.zoom)
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 img = QImage(
@@ -889,7 +1026,7 @@ class VideoWidget(QWidget):
         self.PickPointBTN.setVisible(True)
         self.PickRectangleBTN.setVisible(True)
         self.SaveBTN.setVisible(True)
-        self.CancelBTN.setVisible(True) 
+        self.CancelBTN.setVisible(True)
 
         self.camera.set(cv2.CAP_PROP_POS_FRAMES, (self.section_start - 1))
         self.nextFrame()
@@ -931,6 +1068,7 @@ class VideoWidget(QWidget):
 
         self.settingsDialog.rotationSettings.p1CMB.addItem(M.name)
         self.settingsDialog.rotationSettings.p2CMB.addItem(M.name)
+        self.exportDialog.add_object(M.name)
 
         # reorganize widgets
         self.NameLNE.setVisible(False)
@@ -1033,7 +1171,7 @@ class VideoWidget(QWidget):
         ):
             return
 
-                # disconnect all signals
+            # disconnect all signals
         try:
             self.VidLBL.moving.disconnect()
         except:
@@ -1126,6 +1264,7 @@ class VideoWidget(QWidget):
 
         self.settingsDialog.rotationSettings.p1CMB.removeItem(index)
         self.settingsDialog.rotationSettings.p2CMB.removeItem(index)
+        self.exportDialog.delete_object(name)
 
         # check if tracking is still available
         if (
@@ -1247,30 +1386,123 @@ class VideoWidget(QWidget):
             self.changeRulerVisibilityBTN.setText("Hide")
         self.ReloadCurrentFrame()
 
+    def setRoi(self):
+        """Reorganises the GUI to make ruler control buttons visible connects mouse movement signals"""
+        if (
+            self.camera is None
+            or self.section_start is None
+            or self.section_stop is None
+        ):
+            return
+        self.VidLBL.press.connect(lambda x, y: self.setRoiStart(x, y))
+        self.VidLBL.moving.connect(lambda x, y: self.setRoiMove(x, y))
+        self.setRoiBTN.setVisible(False)
+        self.saveRoiBTN.setVisible(True)
+        self.delRoiBTN.setVisible(True)
+
+    def setRoiStart(self, x, y):
+        if (
+            self.camera is None
+            or self.section_start is None
+            or self.section_stop is None
+        ):
+            return
+        x1, y1 = self.relative_to_cv(x, y)
+        self.roi_rect = (x1, y1, x1, y1)
+        self.ReloadCurrentFrame()
+
+    def setRoiMove(self, x, y):
+        """Refreshes the endpoint of the ruler"""
+        if (
+            self.camera is None
+            or self.section_start is None
+            or self.section_stop is None
+        ):
+            return
+        x1, y1 = self.relative_to_cv(x, y)
+        self.roi_rect = (self.roi_rect[0], self.roi_rect[1], x1, y1)
+
+        self.ReloadCurrentFrame()
+
+    def delRoi(self):
+        """Removes the ruler"""
+        self.roi_rect = None
+        self.setRoiBTN.setVisible(True)
+        self.saveRoiBTN.setVisible(False)
+        self.delRoiBTN.setVisible(False)
+        try:
+            self.VidLBL.press.disconnect()
+        except:
+            pass
+        try:
+            self.VidLBL.moving.disconnect()
+        except:
+            pass
+        try:
+            self.VidLBL.release.disconnect()
+        except:
+            pass
+        self.ReloadCurrentFrame()
+
+    def saveRoi(self):
+        """Saves the roi drawn by the user"""
+        self.ReloadCurrentFrame()
+        self.saveRoiBTN.setVisible(False)
+        try:
+            self.VidLBL.press.disconnect()
+        except:
+            pass
+        try:
+            self.VidLBL.moving.disconnect()
+        except:
+            pass
+        try:
+            self.VidLBL.release.disconnect()
+        except:
+            pass
+
     def showTrackingSettings(self):
         """Displays the dialog with the tracking settings"""
         if self.settingsDialog.exec_():
+            # TRACKER_TYPE
             tracker_type = self.settingsDialog.tracker_type()
-            # rotation
-            if self.settingsDialog.rotation():
-                endpoints=self.settingsDialog.rotationSettings.get_endpoints()
+
+            # ROTATION
+            if self.settingsDialog.rotationCHB.isChecked():
+                endpoints = self.settingsDialog.rotationSettings.get_endpoints()
             else:
-                endpoints=[]
-            
-            # size change
+                endpoints = []
+
+            # SIZE-CHANGE
             if self.settingsDialog.sizeCHB.isChecked():
-                size=True
-            else: 
-                size=False
-            
-            # fps
-            if self.settingsDialog.fps() != "":
-                fps=int(self.settingsDialog.fps())
+                size = True
             else:
-                fps=self.fps
+                size = False
+
+            # FPS
+            if self.settingsDialog.fps() != "":
+                fps = int(self.settingsDialog.fps())
+            else:
+                fps = self.fps
+
+            # FILTER
+            filter = self.settingsDialog.filterCMB.currentText()
+            if filter == "None":
+                filter_settings = {"filter": "None"}
+            elif filter == "Gaussian":
+                filter_settings = {
+                    "filter": "Gaussian",
+                    "window": int(self.settingsDialog.filterSettings.windowLNE.text()),
+                    "sigma": int(self.settingsDialog.filterSettings.sigmaLNE.text()),
+                }
+
+            # DERIVATIVE
+            derivative_settings = None
 
             # running the tracker
-            self.runTracker(tracker_type, size, endpoints, fps)
+            self.runTracker(
+                tracker_type, size, endpoints, fps, filter_settings, derivative_settings
+            )
 
     def eventFilter(self, source, event):
         """Enables users to change X and Y offsets with the W-A-S-D butttons"""
@@ -1286,7 +1518,17 @@ class VideoWidget(QWidget):
                 self.changeXoffset(5)
         return super(VideoWidget, self).eventFilter(source, event)
 
-    def runTracker(self, tracker_type, size, endpoints, fps):
+    def pix2mm(self, data):
+        if self.ruler.mm_per_pix is not None:
+            return data * self.ruler.mm_per_pix
+
+    def pix2m(self, data):
+        if self.ruler.mm_per_pix is not None:
+            return data * self.ruler.mm_per_pix / 1000
+
+    def runTracker(
+        self, tracker_type, size, endpoints, fps, filter_settings, derivative_settings
+    ):
         """Runs the seleted tracking algorithm with the help of a QThread"""
         self.tracker = TrackingThread(
             self.objects_to_track,
@@ -1297,49 +1539,244 @@ class VideoWidget(QWidget):
             size,
             endpoints,
             fps,
+            filter_settings,
+            derivative_settings,
+            self.timestamp,
+            self.roi_rect,
         )
         self.tracker.progressChanged.connect(self.progressDialog.updateBar)
         self.tracker.newObject.connect(self.progressDialog.updateName)
         self.tracker.success.connect(self.trackingSucceeded)
-        self.tracker.rotation_calculated.connect(self.save_rotation)
+        self.tracker.error_occured.connect(self.showErrorMessage)
+        self.tracker.rotation_calculated.connect(self.saveRotation)
         self.tracker.start()
         self.progressDialog.show()
         self.progressDialog.rejected.connect(self.tracker.cancel)
         self.tracker.finished.connect(self.progressDialog.accept)
 
+    def showErrorMessage(self, message):
+        msg = QMessageBox()
+        msg.setWindowTitle("Error occured!")
+        msg.setText(message)
+        msg.setIcon(QMessageBox.Warning)
+        msg.exec_()
 
     def trackingSucceeded(self):
-        self.mode=True
-        #here comes the reorganizations
+        self.mode = True
+        self.OpenBTN.setEnabled(False)
+        self.PropGB.setEnabled(False)
+        self.TrackingSectionGB.setEnabled(False)
+        self.ObjectsGB.setEnabled(False)
+        self.ZoomControlGB.setEnabled(False)
+        self.RulerGB.setEnabled(False)
+        self.exportBTN.setEnabled(True)
+        self.exportVidBTN.setEnabled(True)
+        self.resetAllBTN.setEnabled(True)
 
-    
-    def save_rotation(self, rotation):
+    def resetAll(self):
+        # layout reorganization
+        self.mode = False
+        self.OpenBTN.setEnabled(True)
+        self.PropGB.setEnabled(True)
+        self.TrackingSectionGB.setEnabled(True)
+        self.ObjectsGB.setEnabled(True)
+        self.ZoomControlGB.setEnabled(True)
+        self.RulerGB.setEnabled(True)
+        self.exportBTN.setEnabled(False)
+        self.exportVidBTN.setEnabled(False)
+
+        # reset properties
+        self.section_start = 0  # to make the reset successful
+        self.section_stop = 0
+        self.setresetStart()
+        self.setresetStop()
+
+        self.objects_to_track = []
+        self.rotations = []
+        self.timestamp = []
+
+        self.point_tmp = None
+        self.rect_tmp = None  # x0, y0, x1, y1
+
+        self.removeRuler()
+        self.cancelObject()
+
+        self.roi_rect = None
+
+        self.ObjectLWG.clear()
+        self.settingsDialog.rotationSettings.p1CMB.clear()
+        self.settingsDialog.rotationSettings.p2CMB.clear()
+        self.exportDialog.delete_object("ALL")
+        self.exportDialog.delete_object("ALL")
+
+        self.ReloadCurrentFrame()
+
+    def saveRotation(self, rotation):
         self.rotations.append(rotation)
-        print(rotation.rotation)
-        # reorganize the wideo widget 
+        # reorganize the wideo widget
 
+    def showExportDialog(self):
+        self.exportDialog.setRuler(self.ruler.rdy)
+        if self.exportDialog.exec_():
+            parameters = self.exportDialog.parameters
+            # print(parameters)
+            if len(parameters) != 0:
+                return self.getPlotData(parameters)
 
-def crop_frame(frame, x_offset, y_offset, zoom):
-    """Crops the frame according to offset and zoom parameters"""
+    def getPlotData(self, parameters):
+        # create the numpy aray for the data
+        if not self.mode:
+            return
 
-    x0 = ceil(frame.shape[1] / 2)
-    y0 = ceil(frame.shape[0] / 2)
-    return frame[
-        (y0 + y_offset - round(y0 * zoom)) : (y0 + y_offset + round(y0 * zoom)),
-        (x0 + x_offset - round(x0 * zoom)) : (x0 + x_offset + round(x0 * zoom)),
-    ]
+        exp_ok = False
+        data = None
+        if parameters["mode"] == "MOV" and len(parameters["objects"]):
+            data = np.zeros((len(self.timestamp), len(parameters["objects"]) + 1,))
+            cols = []
 
+            # get timestamp
+            data[:, 0] = np.asarray(self.timestamp)
+            cols.append("Time (s)")
+            for i in range(len(parameters["objects"])):
 
-def gui2tracker(rectangle):
-    """Converts the rectangle representation from the gui to the tracker (x0,y0,x1,y1)->(x,y,w,h)"""
-    x1, y1, x2, y2 = rectangle
-    return (min(x1, x2), min(y1, y2), abs(x2 - x1), abs(y2 - y1))
+                # timestamp only needed once
+                obj = self.objects_to_track[i]
 
+                # position
+                if parameters["prop"] == "POS":
 
-def tracker2gui(rectangle):
-    """Converts the rectangle representation from the tracker to the gui (x,y,w,h)->(x0,y0,x1,y1)"""
-    x, y, w, h = rectangle
-    return (int(x), int(y), int(x + w), int(y + h))
+                    # axis
+                    if parameters["ax"] == "XT":
+                        data[:, i + 1] = obj.position[:, 0]
+                        cols.append(obj.name + " - X")
+                        exp_ok = True
+                    elif parameters["ax"] == "YT":
+                        data[:, i + 1] = obj.position[:, 1]
+                        cols.append(obj.name + " - Y")
+                        exp_ok = True
+                    title = "Position"
+                elif parameters["prop"] == "VEL":
+
+                    # axis
+                    if parameters["ax"] == "XT":
+                        data[:, i + 1] = obj.position[:, 0]
+                        cols.append(obj.name + " - X")
+                        exp_ok = True
+                    elif parameters["ax"] == "YT":
+                        data[:, i + 1] = obj.position[:, 1]  # CHANGE IT WHEN READY
+                        cols.append(obj.name + " - Y")
+                        exp_ok = True
+                    title = "Velocity"
+
+                elif parameters["prop"] == "ACC":
+
+                    # axis
+                    if parameters["ax"] == "XT":
+                        data[:, i + 1] = obj.position[:, 0]
+                        cols.append(obj.name + " - X")
+                        exp_ok = True
+                    elif parameters["ax"] == "YT":
+                        data[:, i + 1] = obj.position[:, 1]  # CHANGE IT WHEN READY
+                        cols.append(obj.name + " - Y")
+                        exp_ok = True
+                    title = "Acceletration"
+
+            if parameters["unit"] == "mm":
+                data = pix2mm(data, self.ruler.mm_per_pix)
+            elif parameters["unit"] == "m":
+                data = pix2m(data, self.ruler.mm_per_pix)
+
+        elif parameters["mode"] == "ROT":
+            data = np.zeros(
+                (
+                    len(self.timestamp),
+                    len(self.rotations)
+                    + 1,  # ezt majd át kell írni len(parameters["rotation"]) ra
+                )
+            )
+            cols = []
+            data[:, 0] = np.asarray(self.timestamp)
+            cols.append("Time (s)")
+
+            for i in range(len(self.rotations)):
+                rot = self.rotations[i]
+
+                if parameters["prop"] == "POS":
+                    data[:, i + 1] = rot.rotation
+                    cols.append(rot.P1.name + " + " + rot.P2.name + " rotation")
+                    title = "Rotation"
+                    exp_ok = True
+                elif parameters["prop"] == "VEL":
+                    data[:, i + 1] = rot.rotation
+                    cols.append(rot.P1.name + " + " + rot.P2.name + " angular velocity")
+                    title = "Angular velocity"
+                    exp_ok = True
+
+                elif parameters["prop"] == "ACC":
+                    data[:, i + 1] = rot.rotation
+                    cols.append(
+                        rot.P1.name + " + " + rot.P2.name + " angular acceleration"
+                    )
+                    title = "Angular acceleration"
+                    exp_ok = True
+
+            if parameters["unit"] == "deg":
+                data = rad2deg_(data, self.ruler.mm_per_pix)
+
+        elif parameters["mode"] == "SIZ":
+            data = np.zeros((len(self.timestamp), len(parameters["objects"]) + 1,))
+            cols = []
+            data[:, 0] = np.asarray(self.timestamp)
+            cols.append("Time (s)")
+            for i in range(len(parameters["objects"])):
+
+                # timestamp only needed once
+                obj = self.objects_to_track[i]
+
+                # position
+                data[:, i + 1] = np.asarray(obj.size_change)
+                cols.append(obj.name + " size change")
+                title = "Size change"
+                exp_ok = True
+
+        if data is None or not exp_ok:
+            return
+        df = pd.DataFrame(data, columns=cols)
+        if parameters["out"] == "PLOT":
+            self.plotter = PlotDialog(df, title, get_unit(parameters))
+            self.plotter.show()
+        elif parameters["out"] == "EXP":
+            save_name = QFileDialog.getSaveFileName(
+                self,
+                "Save data",
+                "/",
+                "Text file (*.txt);;CSV file (*.csv);;Excel file (*.xlsx)",
+            )
+            if save_name[0] != "":
+                if save_name[1] == "Excel file (*.xlsx)":
+                    df.to_excel(save_name[0])
+                else:
+                    df.to_csv(save_name[0])
+
+    def exportVideo(self):
+        save_name = QFileDialog.getSaveFileName(
+            self, "Export Video", "/", "MP4 file (*.mp4)",
+        )
+        if save_name[0] != "":
+            self.exporter = ExportingThread(
+                self.camera,
+                self.objects_to_track,
+                self.section_start,
+                self.section_stop,
+                save_name[0],
+                self.fps,
+            )
+            self.progressDialog.updateName("Expoting video to " + save_name[0])
+            self.progressDialog.rejected.connect(self.exporter.cancel)
+            self.exporter.progressChanged.connect(self.progressDialog.updateBar)
+            self.exporter.finished.connect(self.progressDialog.accept)
+            self.exporter.start()
+            self.progressDialog.show()
 
 
 # run the application
@@ -1348,3 +1785,4 @@ if __name__ == "__main__":
     root = VideoWidget()
     sys.exit(App.exec())
 
+# TODO: replace obj.position(line 1423), changing modes disabling layouts enabling export settings, multiple rotation tracking
