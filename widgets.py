@@ -251,37 +251,37 @@ class TrackingThread(QThread):
         ### end of object-by-object for loop
 
         # rotation tracking
-        if len(self.rotation_endpoints) > 0:
-            self.newObject.emit("Calculating rotation...")
-            p1_index = next(
-                (
-                    i
-                    for i, item in enumerate(self.objects_to_track)
-                    if item.name == self.rotation_endpoints[0]
-                ),
-                -1,
-            )
-            p2_index = next(
-                (
-                    i
-                    for i, item in enumerate(self.objects_to_track)
-                    if item.name == self.rotation_endpoints[1]
-                ),
-                -1,
-            )
-            if p1_index != -1 and p2_index != -1:
-                P1 = self.objects_to_track[p1_index]
-                P2 = self.objects_to_track[p2_index]
-                self.newObject.emit("Rotation between :" + P1.name + " and " + P2.name)
-                R = Rotation(P1, P2)
-                R.calculate()
-                self.rotation_calculated.emit(R)
-
-            else:
-                self.error_occured.emit(
-                    "Uable to calculate rotation with only one point!"
-                )
-                self.is_running = False
+        # if len(self.rotation_endpoints) > 0:
+        #    self.newObject.emit("Calculating rotation...")
+        #    p1_index = next(
+        #        (
+        #            i
+        #            for i, item in enumerate(self.objects_to_track)
+        #            if item.name == self.rotation_endpoints[0]
+        #        ),
+        #        -1,
+        #    )
+        #    p2_index = next(
+        #        (
+        #            i
+        #            for i, item in enumerate(self.objects_to_track)
+        #            if item.name == self.rotation_endpoints[1]
+        #        ),
+        #        -1,
+        #    )
+        #    if p1_index != -1 and p2_index != -1:
+        #        P1 = self.objects_to_track[p1_index]
+        #        P2 = self.objects_to_track[p2_index]
+        #        self.newObject.emit("Rotation between :" + P1.name + " and " + P2.name)
+        #        R = Rotation(P1, P2)
+        #        R.calculate()
+        #        self.rotation_calculated.emit(R)
+        #
+        #    else:
+        #        self.error_occured.emit(
+        #            "Uable to calculate rotation with only one point!"
+        #        )
+        #        self.is_running = False
 
         self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start)
         if self.is_running:
@@ -406,7 +406,7 @@ class RotationListWidget(QListWidget):
     delete = pyqtSignal(str)
 
     def __init__(self, parent=None):
-        super(ObjectListWidget, self).__init__(parent)
+        super(RotationListWidget, self).__init__(parent)
         self.itemClicked.connect(self.listItemMenu)
 
     def listItemMenu(self, item):
@@ -578,6 +578,7 @@ class RotationSettings(QDialog):
         self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
         self.setWindowTitle("Rotation settings")
         self.setModal(True)
+        # self.setAttribute(Qt.WA_DeleteOnClose)
         instuctionLBL = QLabel("Select two points for for tracking")
         self.warningLBL = QLabel("You must select two different points!")
         self.warningLBL.setVisible(False)
@@ -601,6 +602,11 @@ class RotationSettings(QDialog):
 
     def get_endpoints(self):
         return (self.p1CMB.currentText(), self.p2CMB.currentText())
+
+    def set_params(self, objects):
+        for obj in objects:
+            self.p1CMB.addItem(str(obj))
+            self.p2CMB.addItem(str(obj))
 
 
 class FilterSettings(QDialog):
@@ -764,6 +770,11 @@ class ExportDialog(QDialog):
         rotLBL.setStyleSheet("font-weight: bold; font-size: 14px;")
         rotLBL.setMaximumHeight(20)
 
+        # ROTATION NAME
+        self.rotNameLayout = QVBoxLayout()
+        rotGB = QGroupBox("Rotation")
+        rotGB.setLayout(self.rotNameLayout)
+
         # PROPERTY
         self.rot_posRDB = QRadioButton("Position")
         self.rot_velRDB = QRadioButton("Velocity")
@@ -797,6 +808,7 @@ class ExportDialog(QDialog):
         rotButtonLayout.addWidget(rotExportBTN)
 
         rotHLayout = QHBoxLayout()
+        rotHLayout.addWidget(rotGB)
         rotHLayout.addWidget(rot_propBGP)
         rotHLayout.addWidget(rot_unitGB)
 
@@ -933,6 +945,44 @@ class ExportDialog(QDialog):
             self.size_checkboxes[index].deleteLater()
             del self.size_checkboxes[index]
 
+    def add_rotation(self, rot_name):
+        checkbox1 = QCheckBox(rot_name)
+        self.rotNameLayout.addWidget(checkbox1)
+        self.rot_checkboxes.append(checkbox1)
+
+    def delete_rotation(self, rot_name):
+        if rot_name == "ALL":
+            for rot in self.rot_checkboxes:
+                rot.deleteLater()
+            self.rot_checkboxes.clear()
+            return
+
+        # delete from movement
+        index = next(
+            (
+                i
+                for i, item in enumerate(self.rot_checkboxes)
+                if item.text() == rot_name
+            ),
+            -1,
+        )
+        if index != -1:
+            self.rot_checkboxes[index].deleteLater()
+            del self.rot_checkboxes[index]
+
+        # delet from size change
+        index = next(
+            (
+                i
+                for i, item in enumerate(self.rot_checkboxes)
+                if item.text() == rot_name
+            ),
+            -1,
+        )
+        if index != -1:
+            self.rot_checkboxes[index].deleteLater()
+            del self.rot_checkboxes[index]
+
     def plot_movement(self):
         self.parameters.clear()
         self.parameters["out"] = "PLOT"
@@ -959,6 +1009,10 @@ class ExportDialog(QDialog):
         self.parameters.clear()
         self.parameters["out"] = "PLOT"
         self.parameters["mode"] = "ROT"
+        rots = [
+            checkbox.text() for checkbox in self.rot_checkboxes if checkbox.isChecked()
+        ]
+        self.parameters["rotations"] = rots
         self.get_rotation_parameters()
         self.accept()
 
@@ -966,6 +1020,10 @@ class ExportDialog(QDialog):
         self.parameters.clear()
         self.parameters["out"] = "EXP"
         self.parameters["mode"] = "ROT"
+        rots = [
+            checkbox.text() for checkbox in self.rot_checkboxes if checkbox.isChecked()
+        ]
+        self.parameters["rotations"] = rots
         self.get_rotation_parameters()
         self.accept()
 
@@ -974,7 +1032,7 @@ class ExportDialog(QDialog):
         self.parameters["out"] = "PLOT"
         self.parameters["mode"] = "SIZ"
         objs = [
-            checkbox.text() for checkbox in self.size_checkboxes if checkbox.isChecked()
+            checkbox.text() for checkbox in self.rot_checkboxes if checkbox.isChecked()
         ]
         self.parameters["objects"] = objs
         self.accept()

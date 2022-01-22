@@ -25,6 +25,9 @@ class Motion:
         self.velocity = None
         self.acceleration = None
 
+    def __str__(self):
+        return self.name
+
 
 class Rotation:
     """Object that stores rotation data"""
@@ -52,6 +55,9 @@ class Rotation:
         )
         self.ang_velocity = self.rotation
         self.ang_acceleration = self.rotation
+
+    def __str__(self):
+        return self.P1.name + " - " + self.P2.name
 
 
 class Ruler:

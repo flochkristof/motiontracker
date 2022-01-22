@@ -4,6 +4,13 @@ from scipy.ndimage import gaussian_filter1d
 import cv2
 
 
+def get_from_list_by_name(list, name):
+    index = next((i for i, item in enumerate(list) if str(item) == name), -1,)
+    if index != -1:
+        return list[index]
+    return None
+
+
 def display_objects(frame, pos, section_start, section_stop, objects):
     """Draws tracked object onto the video frame for playback and export"""
     for obj in objects:

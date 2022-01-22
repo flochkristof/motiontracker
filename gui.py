@@ -26,6 +26,8 @@ from widgets import (
     ExportingThread,
     Motion,
     PlotDialog,
+    RotationListWidget,
+    RotationSettings,
     TrackingSettings,
     TrackingThread,
     VideoLabel,
@@ -377,6 +379,20 @@ class VideoWidget(QWidget):
 
         # Rotation
         addRotBTN = QPushButton("Track rotation")
+        addRotBTN.clicked.connect(self.addRotation)
+
+        self.rotLWG = RotationListWidget()
+
+        rotLayout = QVBoxLayout()
+        rotLayout.addWidget(addRotBTN)
+        rotLayout.addWidget(self.rotLWG)
+
+        self.rotGB = QGroupBox()
+        self.rotGB.setTitle("Rotation")
+        self.rotGB.setLayout(rotLayout)
+        self.rotGB.setEnabled(False)
+        self.rotGB.setFixedWidth(200)
+        self.rotGB.setFixedHeight(120)
 
         # Export and plot button
         self.exportBTN = QPushButton("Plot - Export")
@@ -408,6 +424,7 @@ class VideoWidget(QWidget):
         LSideLayout.addWidget(self.TrackBTN)
 
         RSideLayout = QVBoxLayout()
+        RSideLayout.addWidget(self.rotGB)
         RSideLayout.addWidget(self.exportBTN)
         RSideLayout.addWidget(self.exportVidBTN)
         RSideLayout.addWidget(self.resetAllBTN)
@@ -1277,11 +1294,14 @@ class VideoWidget(QWidget):
 
     def changeObjectDisplay(self, name):
         """Changes the visibility of the selected object"""
-        index = next(
-            (i for i, item in enumerate(self.objects_to_track) if item.name == name), -1
-        )
-        self.objects_to_track[index].visible = not self.objects_to_track[index].visible
-        self.ReloadCurrentFrame()
+        obj = get_from_list_by_name(self.objects_to_track, name)
+        # index = next(
+        #    (i for i, item in enumerate(self.objects_to_track) if item.name == name), -1
+        # )
+        # self.objects_to_track[index].visible = not self.objects_to_track[index].visible
+        if obj is not None:
+            obj.visible = not obj.visible
+            self.ReloadCurrentFrame()
 
     def setRuler(self):
         """Reorganises the GUI to make ruler control buttons visible connects mouse movement signals"""
@@ -1572,6 +1592,7 @@ class VideoWidget(QWidget):
         self.exportBTN.setEnabled(True)
         self.exportVidBTN.setEnabled(True)
         self.resetAllBTN.setEnabled(True)
+        self.rotGB.setEnabled(True)
 
     def resetAll(self):
         # layout reorganization
@@ -1608,12 +1629,56 @@ class VideoWidget(QWidget):
         self.settingsDialog.rotationSettings.p2CMB.clear()
         self.exportDialog.delete_object("ALL")
         self.exportDialog.delete_object("ALL")
+        self.exportDialog.delete_rotation("ALL")
 
         self.ReloadCurrentFrame()
 
     def saveRotation(self, rotation):
         self.rotations.append(rotation)
         # reorganize the wideo widget
+
+    def addRotation(self):
+        if len(self.objects_to_track) < 2:
+            return
+        settings = RotationSettings()
+        settings.set_params(self.objects_to_track)
+        if settings.exec_():
+            P1_name = settings.p1CMB.currentText()
+            P2_name = settings.p2CMB.currentText()
+            P1 = get_from_list_by_name(self.objects_to_track, P1_name)
+            # p1_index = next(
+            #    (
+            #        i
+            #        for i, item in enumerate(self.objects_to_track)
+            #        if item.name == P1_name
+            #    ),
+            #    -1,
+            # )
+            P2 = get_from_list_by_name(self.objects_to_track, P2_name)
+            # p2_index = next(
+            #    (
+            #        i
+            #        for i, item in enumerate(self.objects_to_track)
+            #        if item.name == P2_name
+            #    ),
+            #    -1,
+            # )
+            if P1 is not None and P2 is not None:
+                R = Rotation(P1, P2)
+                R.calculate()
+                self.rotLWG.addItem(str(R))
+                self.rotations.append(R)
+                self.exportDialog.add_rotation(str(R))
+            # if p1_index != -1 and p2_index != -1:
+            #    P1 = self.objects_to_track[p1_index]
+            #    P2 = self.objects_to_track[p2_index]
+            #    R = Rotation(P1, P2)
+            #    R.calculate()
+            #    self.rotLWG.addItem(str(R))
+            #    self.rotations.append(R)
+            #    self.exportDialog.add_rotation(str(R))
+
+        settings.deleteLater()
 
     def showExportDialog(self):
         self.exportDialog.setRuler(self.ruler.rdy)
@@ -1624,6 +1689,7 @@ class VideoWidget(QWidget):
                 return self.getPlotData(parameters)
 
     def getPlotData(self, parameters):
+        print(parameters)
         # create the numpy aray for the data
         if not self.mode:
             return
@@ -1640,7 +1706,10 @@ class VideoWidget(QWidget):
             for i in range(len(parameters["objects"])):
 
                 # timestamp only needed once
-                obj = self.objects_to_track[i]
+                obj_name = parameters["objects"][i]
+                obj = get_from_list_by_name(self.objects_to_track, obj_name)
+                if obj is None:
+                    return
 
                 # position
                 if parameters["prop"] == "POS":
@@ -1687,19 +1756,17 @@ class VideoWidget(QWidget):
                 data = pix2m(data, self.ruler.mm_per_pix)
 
         elif parameters["mode"] == "ROT":
-            data = np.zeros(
-                (
-                    len(self.timestamp),
-                    len(self.rotations)
-                    + 1,  # ezt majd át kell írni len(parameters["rotation"]) ra
-                )
-            )
+            data = np.zeros((len(self.timestamp), len(parameters["rotations"]) + 1,))
             cols = []
             data[:, 0] = np.asarray(self.timestamp)
             cols.append("Time (s)")
 
-            for i in range(len(self.rotations)):
-                rot = self.rotations[i]
+            for i in range(len(parameters["rotations"])):
+
+                rot_name = parameters["rotations"][i]
+                rot = get_from_list_by_name(self.rotations, rot_name)
+                if rot is None:
+                    return
 
                 if parameters["prop"] == "POS":
                     data[:, i + 1] = rot.rotation
@@ -1730,8 +1797,10 @@ class VideoWidget(QWidget):
             cols.append("Time (s)")
             for i in range(len(parameters["objects"])):
 
-                # timestamp only needed once
-                obj = self.objects_to_track[i]
+                obj_name = parameters["objects"][i]
+                obj = get_from_list_by_name(self.objects_to_track, obj_name)
+                if obj is None:
+                    return
 
                 # position
                 data[:, i + 1] = np.asarray(obj.size_change)
@@ -1785,4 +1854,4 @@ if __name__ == "__main__":
     root = VideoWidget()
     sys.exit(App.exec())
 
-# TODO: replace obj.position(line 1423), changing modes disabling layouts enabling export settings, multiple rotation tracking
+# TODO: replace obj.position(line 1423)
