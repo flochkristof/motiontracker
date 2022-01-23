@@ -96,7 +96,6 @@ class TrackingThread(QThread):
         stop,
         tracker_type,
         size,
-        rotation_endpoints,
         fps,
         filter_settings,
         derivative_settings,
@@ -111,7 +110,6 @@ class TrackingThread(QThread):
         self.timestamp = timestamp
         self.roi_rect = roi_rect
         self.size = size
-        self.rotation_endpoints = rotation_endpoints
         self.fps = fps
         self.filter_settings = filter_settings
         self.derivative_settings = derivative_settings
@@ -429,40 +427,69 @@ class TrackingSettings(QDialog):
         self.setWindowTitle("Tracking details")
         self.setModal(True)
 
-        ### Additional Features ###
-        self.rotationCHB = QCheckBox("Track rotation")
-        self.rotationCHB.stateChanged.connect(self.openRotationSettings)
-        self.sizeCHB = QCheckBox("Track size change")
-        self.sizeCHB.stateChanged.connect(self.sizeMode)
+        #### Additional Features ###
+        # self.rotationCHB = QCheckBox("Track rotation")
+        # self.rotationCHB.stateChanged.connect(self.openRotationSettings)
+        # self.sizeCHB = QCheckBox("Track size change")
+        # self.sizeCHB.stateChanged.connect(self.sizeMode)
+        #
+        # featureLayout = QVBoxLayout()
+        # featureLayout.addWidget(self.rotationCHB)
+        # featureLayout.addWidget(self.sizeCHB)
+        #
+        # featureGB = QGroupBox("Additional features to track")
+        # featureGB.setLayout(featureLayout)
+        #
+        #### Tracking algorithm ###
+        # self.algoritmCMB = QComboBox()
+        # self.algoritmCMB.addItems(
+        #    ["CSRT", "BOOSTING", "MIL", "KCF", "TLD", "MEDIANFLOW", "MOSSE"]
+        # )
+        #
+        # self.zoomNotificationLBL = QLabel(
+        #    "Only the CSRT algorithm is capable of handling the size change of an object!"
+        # )
+        # self.zoomNotificationLBL.setVisible(False)
+        # algoLayout = QVBoxLayout()
+        # algoLayout.addWidget(self.algoritmCMB)
+        # algoLayout.addWidget(self.zoomNotificationLBL)
+        #
+        # algoGB = QGroupBox("Tracking algorithm")
+        # algoGB.setLayout(algoLayout)
 
-        featureLayout = QVBoxLayout()
-        featureLayout.addWidget(self.rotationCHB)
-        featureLayout.addWidget(self.sizeCHB)
-
-        featureGB = QGroupBox("Additional features to track")
-        featureGB.setLayout(featureLayout)
-
-        ### Tracking algorithm ###
+        ### Tracking settings ###
+        algoLBL = QLabel("Tracking algorithm")
         self.algoritmCMB = QComboBox()
         self.algoritmCMB.addItems(
             ["CSRT", "BOOSTING", "MIL", "KCF", "TLD", "MEDIANFLOW", "MOSSE"]
         )
 
+        ## Zoom settings ##
+        self.sizeCHB = QCheckBox("Track size change")
+        self.sizeCHB.stateChanged.connect(self.sizeMode)
         self.zoomNotificationLBL = QLabel(
             "Only the CSRT algorithm is capable of handling the size change of an object!"
         )
         self.zoomNotificationLBL.setVisible(False)
-        algoLayout = QVBoxLayout()
+        self.zoomNotificationLBL.setWordWrap(True)
+
+        ## organizing the layout
+        algoLayout = QHBoxLayout()
+        algoLayout.addWidget(algoLBL)
         algoLayout.addWidget(self.algoritmCMB)
-        algoLayout.addWidget(self.zoomNotificationLBL)
 
-        algoGB = QGroupBox("Tracking algorithm")
-        algoGB.setLayout(algoLayout)
+        propLayout = QHBoxLayout()
+        propLayout.addLayout(algoLayout)
+        propLayout.addWidget(self.sizeCHB)
+        # propLayout.addWidget(self.zoomNotificationLBL)
 
-        ### Left side veritcal layout ###
-        leftLayout = QVBoxLayout()
-        leftLayout.addWidget(featureGB)
-        leftLayout.addWidget(algoGB)
+        topLayout = QVBoxLayout()
+        topLayout.addLayout(propLayout)
+        topLayout.addWidget(self.zoomNotificationLBL)
+
+        ### Left side veritcal layout GroupBox ###
+        topGB = QGroupBox("Tracking settings")
+        topGB.setLayout(topLayout)
 
         ### Real FPS input ###
         fpsLBL = QLabel("Real FPS:")
@@ -486,6 +513,10 @@ class TrackingSettings(QDialog):
         filterBTN = QPushButton("Filter settings")
         filterBTN.clicked.connect(self.openFilterSettings)
 
+        filterVLayout = QVBoxLayout()
+        filterVLayout.addLayout(filterHLayout)
+        filterVLayout.addWidget(filterBTN)
+
         ### Derivative ###
         derivativeLBL = QLabel("Derivative:")
         self.derivativeCMB = QComboBox()
@@ -497,28 +528,45 @@ class TrackingSettings(QDialog):
         derivativeBTN = QPushButton("Derivative settings")
         derivativeBTN.clicked.connect(self.openDerivativeSettings)
 
-        ### Right side GroupBox ###
-        rightLayout = QVBoxLayout()
-        rightLayout.addLayout(fpsLayout)
-        rightLayout.addLayout(filterHLayout)
-        rightLayout.addWidget(filterBTN)
-        rightLayout.addLayout(derivativeHLayout)
-        rightLayout.addWidget(derivativeBTN)
+        derivativeVLayout = QVBoxLayout()
+        derivativeVLayout.addLayout(derivativeHLayout)
+        derivativeVLayout.addWidget(derivativeBTN)
 
-        rightGB = QGroupBox("Post-processing settings")
-        rightGB.setLayout(rightLayout)
+        # Botton layout and groupbox
+        bottonLayout = QVBoxLayout()
+        bottonLayout.addLayout(fpsLayout)
 
-        ### Settings horizontal layout ###
-        settingsLayout = QHBoxLayout()
-        settingsLayout.addLayout(leftLayout)
-        settingsLayout.addWidget(rightGB)
+        processingLayout = QHBoxLayout()
+        processingLayout.addLayout(filterVLayout)
+        processingLayout.addLayout(derivativeVLayout)
+
+        bottonLayout.addLayout(processingLayout)
+
+        bottomGB = QGroupBox("Post-processing settings")
+        bottomGB.setLayout(bottonLayout)
+
+        # rightLayout = QVBoxLayout()
+        # rightLayout.addLayout(fpsLayout)
+        # rightLayout.addLayout(filterHLayout)
+        # rightLayout.addWidget(filterBTN)
+        # rightLayout.addLayout(derivativeHLayout)
+        # rightLayout.addWidget(derivativeBTN)
+        #
+        # rightGB = QGroupBox("Post-processing settings")
+        # rightGB.setLayout(rightLayout)
+        #
+        #### Settings horizontal layout ###
+        # settingsLayout = QHBoxLayout()
+        # settingsLayout.addWidget(leftGB)
+        # settingsLayout.addWidget(rightGB)
 
         ### TRACK button and final layout
         trackBTN = QPushButton("Track")
         trackBTN.clicked.connect(self.accept)
 
         mainlayout = QVBoxLayout()
-        mainlayout.addLayout(settingsLayout)
+        mainlayout.addWidget(topGB)
+        mainlayout.addWidget(bottomGB)
         mainlayout.addWidget(trackBTN)
 
         self.setLayout(mainlayout)
@@ -528,18 +576,18 @@ class TrackingSettings(QDialog):
         self.filterSettings = FilterSettings()
         self.derivativeSettings = DerivativeSettings()
 
-    def openRotationSettings(self):
-        if self.rotationCHB.isChecked():
-            if self.rotationSettings.p1CMB.count() >= 2:
-                self.rotationSettings.exec_()
-            else:
-                self.rotationCHB.setCheckState(Qt.Unchecked)
-                msg = QMessageBox()
-                msg.setWindowTitle("Not enough points!")
-                msg.setText("You need at least two points for rotation tracking!")
-                msg.setIcon(QMessageBox.Warning)
-                msg.exec_()
-                self.rotationCHB.setChecked(False)
+    # def openRotationSettings(self):
+    #    if self.rotationCHB.isChecked():
+    #        if self.rotationSettings.p1CMB.count() >= 2:
+    #            self.rotationSettings.exec_()
+    #        else:
+    #            self.rotationCHB.setCheckState(Qt.Unchecked)
+    #            msg = QMessageBox()
+    #            msg.setWindowTitle("Not enough points!")
+    #            msg.setText("You need at least two points for rotation tracking!")
+    #            msg.setIcon(QMessageBox.Warning)
+    #            msg.exec_()
+    #            self.rotationCHB.setChecked(False)
 
     def openFilterSettings(self):
         self.filterSettings.setFilter(self.filterCMB.currentText())
@@ -565,8 +613,8 @@ class TrackingSettings(QDialog):
     def size_change(self):
         return self.sizeCHB.isChecked()
 
-    def rotation(self):
-        return self.rotationCHB.isChecked()
+    # def rotation(self):
+    #    return self.rotationCHB.isChecked()
 
     def fps(self):
         return self.fpsLNE.text()

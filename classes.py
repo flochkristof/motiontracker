@@ -121,3 +121,12 @@ class Ruler:
         self.y1 = None
         self.mm = None
         self.mm_per_pix = None
+
+
+class Logger:
+    def __init__(self):
+        self.log = []
+
+    def log(self, text):
+        self.log.append(text)
+
