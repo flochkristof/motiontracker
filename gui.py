@@ -1437,12 +1437,37 @@ class VideoWidget(QWidget):
             elif filter == "Gaussian":
                 filter_settings = {
                     "filter": "Gaussian",
-                    "window": int(self.settingsDialog.filterSettings.windowLNE.text()),
-                    "sigma": int(self.settingsDialog.filterSettings.sigmaLNE.text()),
+                    "window": int(self.settingsDialog.filterSettings.gwindowLNE.text()),
+                    "sigma": int(self.settingsDialog.filterSettings.gsigmaLNE.text()),
                 }
+            elif filter == "Savitzky-Golay":
+                filter_settings = {
+                    "filter": "Savitzky-Golay",
+                    "window": int(
+                        self.settingsDialog.filterSettings.sgwindowLNE.text()
+                    ),
+                    "pol": int(self.settingsDialog.filterSettings.sgpolLNE.text()),
+                }
+            elif filter == "Moving AVG":
+                filter_settings = {
+                    "filter": "Moving AVG",
+                    "window": int(self.settingsDialog.filterSettings.mwindowLNE.text()),
+                }
+            else:
+                filter_settings = None
 
             # DERIVATIVE
-            derivative_settings = None
+            derivative = self.settingsDialog.derivativeCMB.currentText()
+            if derivative == "LOESS-coefficients":
+                derivative_settings = {
+                    "derivative": "SG",
+                    "window": int(
+                        self.settingsDialog.derivativeSettings.sgwindowLNE.text()
+                    ),
+                    "pol": int(self.settingsDialog.derivativeSettings.sgpolLNE.text()),
+                }
+            else:
+                derivative_settings = None
 
             # running the tracker
             self.runTracker(
@@ -1647,15 +1672,16 @@ class VideoWidget(QWidget):
                         cols.append(obj.name + " - Y")
                         exp_ok = True
                     title = "Position"
+
                 elif parameters["prop"] == "VEL":
 
                     # axis
                     if parameters["ax"] == "XT":
-                        data[:, i + 1] = obj.position[:, 0]
+                        data[:, i + 1] = obj.velocity[:, 0]
                         cols.append(obj.name + " - X")
                         exp_ok = True
                     elif parameters["ax"] == "YT":
-                        data[:, i + 1] = obj.position[:, 1]  # CHANGE IT WHEN READY
+                        data[:, i + 1] = obj.velocity[:, 1]  # CHANGE IT WHEN READY
                         cols.append(obj.name + " - Y")
                         exp_ok = True
                     title = "Velocity"
@@ -1664,11 +1690,11 @@ class VideoWidget(QWidget):
 
                     # axis
                     if parameters["ax"] == "XT":
-                        data[:, i + 1] = obj.position[:, 0]
+                        data[:, i + 1] = obj.acceleration[:, 0]
                         cols.append(obj.name + " - X")
                         exp_ok = True
                     elif parameters["ax"] == "YT":
-                        data[:, i + 1] = obj.position[:, 1]  # CHANGE IT WHEN READY
+                        data[:, i + 1] = obj.acceleration[:, 1]  # CHANGE IT WHEN READY
                         cols.append(obj.name + " - Y")
                         exp_ok = True
                     title = "Acceletration"

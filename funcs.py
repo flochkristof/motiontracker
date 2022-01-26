@@ -1,6 +1,8 @@
 from math import ceil
+from matplotlib.pyplot import yscale
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
+from scipy.signal import savgol_filter
 import cv2
 
 
@@ -70,14 +72,14 @@ def get_unit(parameters):
             if parameters["prop"] == "POS":
                 return r"Position $\mathregular{(m)}$"
             elif parameters["prop"] == "VEL":
-                return r"Position $\mathregular{(\frac{m}{s})}$"
+                return r"Velocity $\mathregular{(\frac{m}{s})}$"
             elif parameters["prop"] == "ACC":
                 return r"Acceleration $\mathregular{(\frac{m}{s^{2}})}$"
         elif parameters["unit"] == "mm":
             if parameters["prop"] == "POS":
                 return r"Position $\mathregular{(mm)}$"
             elif parameters["prop"] == "VEL":
-                return r"Position $\mathregular{(\frac{mm}{s})}$"
+                return r"Velocity $\mathregular{(\frac{mm}{s})}$"
             elif parameters["prop"] == "ACC":
                 return r"Acceleration $\mathregular{(\frac{mm}{s^{2}})}$"
         elif parameters["unit"] == "pix":
@@ -163,8 +165,8 @@ def gaussian(data, window, sigma):
     x = np.asarray([p[0] for p in data])
     y = np.asarray([p[1] for p in data])
 
-    x = gaussian_filter1d(x, sigma=sigma, truncate=t)
-    y = gaussian_filter1d(y, sigma=sigma, truncate=t)
+    x = gaussian_filter1d(x, sigma=sigma, truncate=t, mode="nearest")
+    y = gaussian_filter1d(y, sigma=sigma, truncate=t, mode="nearest")
 
     result = np.zeros((len(x), 2))
 
@@ -173,7 +175,75 @@ def gaussian(data, window, sigma):
     return result
 
 
-"""END OF filters for post processing"""
+def moving_avg(data, w_len):
+    """Mooving average filter"""
+    window = np.ones(w_len) / w_len
+    x = np.asarray([p[0] for p in data])
+    y = np.asarray([p[1] for p in data])
+    x = np.convolve(data[:, 0], window, mode="valid")
+    y = np.convolve(data[:, 1], window, mode="valid")
+    result = np.zeros((len(x), 2))
+    result[:, 0] = x
+    result[:, 1] = y
+
+
+def savgol(data, window, pol):
+    """Savitzky-Golay filter"""
+    x = np.asarray([p[0] for p in data])
+    y = np.asarray([p[1] for p in data])
+    xs = savgol_filter(x, window, pol)
+    ys = savgol_filter(y, window, pol)
+    result = np.zeros((len(x), 2))
+    result[:, 0] = xs
+    result[:, 1] = ys
+    return result
+
+
+def savgol_diff(data, window, pol, order, fps=1):
+    if window % 2 == 0:
+        window += 1
+    print(data)
+    x = data[:, 0]  # .T
+    y = data[:, 1]  # .transpose()
+    print(x)
+    dx = savgol_filter(x, window, pol, deriv=order) * (fps) ** order
+    print(dx)
+    dy = savgol_filter(y, window, pol, deriv=order) * (fps) ** order
+    result = np.zeros((len(x), 2))
+
+    result[:, 0] = dx
+    result[:, 1] = dy
+    return result
+
+
+"""
+
+    def derivate_SG(self, data, window, poly_n, order, time_scale):
+        '''Savitzky-Golay filterrel való numerikus deriválás'''
+        if isinstance(data[0], float) or isinstance(data[0], int):
+            return signal.savgol_filter(data, window, poly_n, deriv=order)*(self.fps*time_scale)**order
+
+        elif len(data[0]) == 2 or isinstance(data[0], (list, tuple)):
+            result = np.array(data)
+            x = result[:,0]
+            y = result[:,1]
+            dx_dt = signal.savgol_filter(x, window, poly_n, deriv=order)*(self.fps*time_scale)**order
+            dy_dt = signal.savgol_filter(y, window, poly_n, deriv=order)*(self.fps*time_scale)**order
+            result[:,0], result[:,1] = dx_dt, dy_dt
+            return result
+def derivative_FinDiff(self, data, accuracy, order, time_scale):
+        '''Véges differencia módszerrel való deriválás tetszőleges renddel'''
+    step = 1/(self.fps*time_scale)
+    d_dt = FinDiff(0, step, order, acc=accuracy)
+    if isinstance(data[0], float) or isinstance(data[0], int):
+            return d_dt(data)
+    elif len(data[0]) == 2 or isinstance(data[0], (list, tuple)):
+            result = np.array(data)
+        x = result[:,0]
+        y = result[:,1]
+        result[:,0], result[:,1] = d_dt(x), d_dt(y)
+        return result
+"""
 
 
 def crop_frame(frame, x_offset, y_offset, zoom):

@@ -1,3 +1,4 @@
+import turtle
 from PyQt5.QtWidgets import (
     QDialog,
     QGroupBox,
@@ -240,11 +241,36 @@ class TrackingThread(QThread):
                     self.filter_settings["window"],
                     self.filter_settings["sigma"],
                 )
+            elif self.filter_settings["filter"] == "Moving AVG":
+                M.position = moving_avg(M.point_path, self.filter_settings["window"])
+
+            elif self.filter_settings["filter"] == "SG":
+                M.position = savgol(
+                    M.point_path,
+                    self.filter_settings["window"],
+                    self.filter_settings["pol"],
+                )
 
             ## DERIVATIVES ##
             # if self.filter
             M.velocity = M.position
             M.acceleration = M.position
+
+            if self.derivative_settings["derivative"] == "SG":
+                M.velocity = savgol_diff(
+                    M.position,
+                    self.derivative_settings["window"],
+                    self.derivative_settings["pol"],
+                    1,
+                    self.fps,
+                )
+                M.acceleration = savgol_diff(
+                    M.position,
+                    self.derivative_settings["window"],
+                    self.derivative_settings["pol"],
+                    2,
+                    self.fps,
+                )
 
         ### end of object-by-object for loop
 
@@ -505,6 +531,9 @@ class TrackingSettings(QDialog):
         self.filterCMB = QComboBox()
         self.filterCMB.addItem("None")
         self.filterCMB.addItem("Gaussian")
+        self.filterCMB.addItem("Moving AVG")
+        self.filterCMB.addItem("Savitzky-Golay")
+        self.filterCMB.currentTextChanged.connect(self.openFilterSettings)
 
         filterHLayout = QHBoxLayout()
         filterHLayout.addWidget(filterLBL)
@@ -520,6 +549,8 @@ class TrackingSettings(QDialog):
         ### Derivative ###
         derivativeLBL = QLabel("Derivative:")
         self.derivativeCMB = QComboBox()
+        self.derivativeCMB.addItem("LOESS-coefficients")
+        self.derivativeCMB.currentTextChanged.connect(self.openDerivativeSettings)
 
         derivativeHLayout = QHBoxLayout()
         derivativeHLayout.addWidget(derivativeLBL)
@@ -590,12 +621,14 @@ class TrackingSettings(QDialog):
     #            self.rotationCHB.setChecked(False)
 
     def openFilterSettings(self):
-        self.filterSettings.setFilter(self.filterCMB.currentText())
-        self.filterSettings.exec_()
+        filter_type = self.filterCMB.currentText()
+        if filter_type != "None":
+            self.filterSettings.setFilter(self.filterCMB.currentText())
+            self.filterSettings.exec_()
 
     def openDerivativeSettings(self):
-        # collect data
-        self.derivativeSettings.show()
+        self.derivativeSettings.setDerivative(self.derivativeCMB.currentText())
+        self.derivativeSettings.exec_()
 
     def sizeMode(self):
         if self.sizeCHB.isChecked():
@@ -664,32 +697,91 @@ class FilterSettings(QDialog):
         self.setWindowTitle("Filter settings")
         self.setModal(True)
 
+        # GAUSS FILTER
+        gwindowLBL = QLabel("Window")
+        self.gwindowLNE = QLineEdit()
+        self.gwindowLNE.setValidator(QIntValidator(0, 100))
+        self.gwindowLNE.setText("5")
+        gwindowLayout = QHBoxLayout()
+        gwindowLayout.addWidget(gwindowLBL)
+        gwindowLayout.addWidget(self.gwindowLNE)
+        gsigmaLBL = QLabel("Sigma")
+        self.gsigmaLNE = QLineEdit()
+        self.gsigmaLNE.setValidator(QIntValidator(0, 10))
+        self.gsigmaLNE.setText("3")
+        gsigmaLayout = QHBoxLayout()
+        gsigmaLayout.addWidget(gsigmaLBL)
+        gsigmaLayout.addWidget(self.gsigmaLNE)
+        gaussBTN = QPushButton("Set")
+        gaussBTN.clicked.connect(self.accept)
+        gaussLayout = QVBoxLayout()
+        gaussLayout.addLayout(gwindowLayout)
+        gaussLayout.addLayout(gsigmaLayout)
+        gaussLayout.addWidget(gaussBTN)
+        self.gaussGB = QGroupBox("Gauss")
+        self.gaussGB.setLayout(gaussLayout)
+
+        # MOVING AVERAGE
+        mwindowLBL = QLabel("Window")
+        self.mwindowLNE = QLineEdit()
+        self.mwindowLNE.setValidator(QIntValidator(0, 100))
+        self.mwindowLNE.setText("5")
+        mwindowLayout = QHBoxLayout()
+        mwindowLayout.addWidget(mwindowLBL)
+        mwindowLayout.addWidget(self.mwindowLNE)
+        mavgBTN = QPushButton("Set")
+        mavgBTN.clicked.connect(self.accept)
+        mavgLayout = QVBoxLayout()
+        mavgLayout.addLayout(mwindowLayout)
+        mavgLayout.addWidget(mavgBTN)
+        self.mavgGB = QGroupBox("Moving AVG")
+        self.mavgGB.setLayout(mavgLayout)
+
+        # SAVITZKY-GOLAY
+        sgwindowLBL = QLabel("Window")
+        self.sgwindowLNE = QLineEdit()
+        self.sgwindowLNE.setValidator(QIntValidator(0, 100))
+        self.sgwindowLNE.setText("5")
+        sgwindowLayout = QHBoxLayout()
+        sgwindowLayout.addWidget(sgwindowLBL)
+        sgwindowLayout.addWidget(self.sgwindowLNE)
+        sgpolLBL = QLabel("Polynom")
+        self.sgpolLNE = QLineEdit()
+        self.sgpolLNE.setValidator(QIntValidator(0, 20))
+        self.sgpolLNE.setText("3")
+        sgpolLayout = QHBoxLayout()
+        sgpolLayout.addWidget(sgpolLBL)
+        sgpolLayout.addWidget(self.sgpolLNE)
+        sgBTN = QPushButton("Set")
+        sgBTN.clicked.connect(self.accept)
+        sgLayout = QVBoxLayout()
+        sgLayout.addLayout(sgwindowLayout)
+        sgLayout.addLayout(sgpolLayout)
+        self.sgGB = QGroupBox("Savitzky-Golay")
+        self.sgGB.setLayout(sgLayout)
+
+        mainLayout = QVBoxLayout()
+        mainLayout.addWidget(self.gaussGB)
+        mainLayout.addWidget(self.mavgGB)
+        mainLayout.addWidget(self.sgGB)
+
+        self.setLayout(mainLayout)
+
     def setFilter(self, filter_type):
         if filter_type == "Gaussian":
-            windowLBL = QLabel("Window")
-            self.windowLNE = QLineEdit()
-            self.windowLNE.setValidator(QIntValidator(0, 100))
-            windowLayout = QHBoxLayout()
-            windowLayout.addWidget(windowLBL)
-            windowLayout.addWidget(self.windowLNE)
+            self.gaussGB.setVisible(True)
+            self.mavgGB.setVisible(False)
+            self.sgGB.setVisible(False)
 
-            sigmaLBL = QLabel("Sigma")
-            self.sigmaLNE = QLineEdit()
-            self.sigmaLNE.setValidator(QIntValidator(0, 10))
+        elif filter_type == "Moving AVG":
+            self.gaussGB.setVisible(False)
+            self.mavgGB.setVisible(True)
+            self.sgGB.setVisible(False)
 
-            sigmaLayout = QHBoxLayout()
-            sigmaLayout.addWidget(sigmaLBL)
-            sigmaLayout.addWidget(self.sigmaLNE)
-
-            gaussBTN = QPushButton("Set")
-            gaussBTN.clicked.connect(self.accept)
-
-            gaussLayout = QVBoxLayout()
-            gaussLayout.addLayout(windowLayout)
-            gaussLayout.addLayout(sigmaLayout)
-            gaussLayout.addWidget(gaussBTN)
-
-            self.setLayout(gaussLayout)
+        elif filter_type == "Savitzky-Golay":
+            self.gaussGB.setVisible(False)
+            self.mavgGB.setVisible(False)
+            self.sgGB.setVisible(True)
 
 
 class DerivativeSettings(QDialog):
@@ -698,6 +790,40 @@ class DerivativeSettings(QDialog):
         self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
         self.setWindowTitle("Derivative settings")
         self.setModal(True)
+
+        # SAVITZKY-GOLAY
+        sgwindowLBL = QLabel("Window")
+        self.sgwindowLNE = QLineEdit()
+        self.sgwindowLNE.setValidator(QIntValidator(0, 100))
+        self.sgwindowLNE.setText("5")
+        sgwindowLayout = QHBoxLayout()
+        sgwindowLayout.addWidget(sgwindowLBL)
+        sgwindowLayout.addWidget(self.sgwindowLNE)
+        sgpolLBL = QLabel("Polynom")
+        self.sgpolLNE = QLineEdit()
+        self.sgpolLNE.setValidator(QIntValidator(0, 20))
+        self.sgpolLNE.setText("3")
+        sgpolLayout = QHBoxLayout()
+        sgpolLayout.addWidget(sgpolLBL)
+        sgpolLayout.addWidget(self.sgpolLNE)
+        sgBTN = QPushButton("Set")
+        sgBTN.clicked.connect(self.accept)
+        sgLayout = QVBoxLayout()
+        sgLayout.addLayout(sgwindowLayout)
+        sgLayout.addLayout(sgpolLayout)
+        self.sgGB = QGroupBox("LOESS-coefficients")
+        self.sgGB.setLayout(sgLayout)
+
+        mainLayout = QVBoxLayout()
+        mainLayout.addWidget(self.sgGB)
+
+        self.setLayout(mainLayout)
+
+    def setDerivative(self, deriv_name):
+        if deriv_name == "LOESS-coefficients":
+            self.sgGB.setVisible(True)
+        else:
+            self.sgGB.setVisible(False)
 
 
 class TrackingProgress(QDialog):
