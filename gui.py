@@ -18,6 +18,7 @@ from PyQt5.QtWidgets import (
     QFileDialog,
     QGroupBox,
     QMessageBox,
+    QCheckBox,
 )
 import cv2
 from numpy import rad2deg
@@ -67,19 +68,26 @@ class VideoWidget(QWidget):
 
         self.timer = QTimer()
         self.timer.setTimerType(Qt.PreciseTimer)
-        self.setWindowTitle("VideoWidget")
         self.setGeometry(100, 100, 1280, 720)  # x, y, w, h
         self.installEventFilter(self)
         self.initUI()
+        self.showMaximized()
         self.show()
 
     def initUI(self):
         """Creating and configuring the user interface"""
-        self.showMaximized()
+
+        # Styling
+        self.setObjectName("main_window")
+        with open("style/main.qss", "r") as style:
+            self.setStyleSheet(style.read())
+        self.setWindowIcon(QIcon("images/logo.svg"))
+        self.setWindowTitle("Motion Tracker Beta")
 
         # Video open button
         self.OpenBTN = QPushButton("Open Video")
         self.OpenBTN.clicked.connect(self.openNewFile)
+        self.OpenBTN.setObjectName("openBTN")
 
         # Video properties
         self.FileNameLBL = QLabel()
@@ -107,10 +115,12 @@ class VideoWidget(QWidget):
         self.setresetStartBTN.setText("Set")
         self.setresetStartBTN.setMaximumWidth(60)
         self.setresetStartBTN.clicked.connect(self.setresetStart)
+        self.setresetStartBTN.setObjectName("setresetStartBTN")
         self.setresetStopBTN = QPushButton()
         self.setresetStopBTN.setText("Set")
         self.setresetStopBTN.setMaximumWidth(60)
         self.setresetStopBTN.clicked.connect(self.setresetStop)
+        self.setresetStopBTN.setObjectName("setresetStopBTN")
 
         self.SectionStartLBL = QLabel()
         self.SectionStartLBL.setText("Start: - ")
@@ -150,6 +160,7 @@ class VideoWidget(QWidget):
         self.PickPointBTN.clicked.connect(self.pickPointStart)
         self.PickPointBTN.setVisible(False)
         self.PickPointBTN.setCheckable(True)
+        self.PickPointBTN.setObjectName("pointBTN")
 
         # object area rectangle
         self.PickRectangleBTN = QPushButton()
@@ -157,18 +168,21 @@ class VideoWidget(QWidget):
         self.PickRectangleBTN.clicked.connect(self.pickRectStart)
         self.PickRectangleBTN.setVisible(False)
         self.PickRectangleBTN.setCheckable(True)
+        self.PickRectangleBTN.setObjectName("rectBTN")
 
         # save object
         self.SaveBTN = QPushButton()
         self.SaveBTN.setText("Save")
         self.SaveBTN.clicked.connect(self.saveObject)
         self.SaveBTN.setVisible(False)
+        self.SaveBTN.setObjectName("saveBTN")
 
         # canceling object creating
         self.CancelBTN = QPushButton()
         self.CancelBTN.setText("Cancel")
         self.CancelBTN.clicked.connect(self.cancelObject)
         self.CancelBTN.setVisible(False)
+        self.CancelBTN.setObjectName("cancelBTN")
 
         self.PickLayout = QHBoxLayout()
         self.PickLayout.addWidget(self.PickPointBTN)
@@ -326,24 +340,28 @@ class VideoWidget(QWidget):
         self.setRulerBTN = QPushButton()
         self.setRulerBTN.setText("Set")
         self.setRulerBTN.clicked.connect(self.setRuler)
+        self.setRulerBTN.setObjectName("setRulerBTN")
 
         # saving the ruler
         self.saveRulerBTN = QPushButton()
         self.saveRulerBTN.setText("Save")
         self.saveRulerBTN.clicked.connect(self.saveRuler)
         self.saveRulerBTN.setVisible(False)
+        self.saveRulerBTN.setObjectName("saveRulerBTN")
 
         # removing the ruler
         self.removeRulerBTN = QPushButton()
         self.removeRulerBTN.setText("Delete")
         self.removeRulerBTN.setVisible(False)
         self.removeRulerBTN.clicked.connect(self.removeRuler)
+        self.removeRulerBTN.setObjectName("ewmoveRulerBTN")
 
         # hiding displaying the ruler
         self.changeRulerVisibilityBTN = QPushButton()
         self.changeRulerVisibilityBTN.setText("Hide")
         self.changeRulerVisibilityBTN.setVisible(False)
         self.changeRulerVisibilityBTN.clicked.connect(self.changeRulerVisibility)
+        self.changeRulerVisibilityBTN.setObjectName("changeRulerVisibilityBTN")
 
         # Ruler layout
         self.RulerInputLayout = QHBoxLayout()
@@ -367,16 +385,19 @@ class VideoWidget(QWidget):
         # Select roi
         self.setRoiBTN = QPushButton("Set")
         self.setRoiBTN.clicked.connect(self.setRoi)
+        self.setRoiBTN.setObjectName("setRoiBTN")
 
         # save roi
         self.saveRoiBTN = QPushButton("Save")
         self.saveRoiBTN.clicked.connect(self.saveRoi)
         self.saveRoiBTN.setVisible(False)
+        self.saveRoiBTN.setObjectName("saveRoiBTN")
 
         # delete roi
         self.delRoiBTN = QPushButton("Delete")
         self.delRoiBTN.clicked.connect(self.delRoi)
         self.delRoiBTN.setVisible(False)
+        self.delRoiBTN.setObjectName("delRoiBTN")
 
         # roi into layout & groupbox
         roiLayout = QVBoxLayout()
@@ -424,12 +445,43 @@ class VideoWidget(QWidget):
         # Video export
         self.exportVidBTN = QPushButton("Export Video")
         self.exportVidBTN.clicked.connect(self.exportVideo)
+        # self.exportVidBTN.setEnabled(False)
+
+        # Playback options
+        propertiesLBL = QLabel("Displayed properties:")
+        self.boxCHB = QCheckBox("Box")
+        self.boxCHB.setChecked(True)
+        self.pointCHB = QCheckBox("Point")
+        self.pointCHB.setChecked(True)
+        # self.trajectoryCHB = QCheckBox("Trajectory")
+        trajectoryLBL = QLabel("Trajectory length:")
+        self.playbackSLD = QSlider(Qt.Horizontal)
+        self.playbackSLD.setMinimum(0)
+        self.playbackSLD.setMaximum(100)
+        self.playbackSLD.setValue(0)
+
+        playbackLayout = QVBoxLayout()
+        playbackLayout.addWidget(propertiesLBL)
+        playbackLayout.addWidget(self.boxCHB)
+        playbackLayout.addWidget(self.pointCHB)
+        # playbackLayout.addWidget(self.trajectoryCHB)
+        playbackLayout.addWidget(trajectoryLBL)
+        playbackLayout.addWidget(self.playbackSLD)
+        playbackLayout.addWidget(self.exportVidBTN)
+
+        self.playbackGB = QGroupBox("Playback")
+        self.playbackGB.setLayout(playbackLayout)
+        self.playbackGB.setFixedWidth(200)
+        self.playbackGB.setEnabled(False)
+
+        # Video export
+        self.exportVidBTN = QPushButton("Export Video")
+        self.exportVidBTN.clicked.connect(self.exportVideo)
         self.exportVidBTN.setEnabled(False)
 
         # Reset all button
         self.resetAllBTN = QPushButton("Reset ALL")
         self.resetAllBTN.clicked.connect(self.resetAll)
-        self.exportBTN.setEnabled(False)
 
         # LSideLayout
         LSideLayout = QVBoxLayout()
@@ -449,7 +501,8 @@ class VideoWidget(QWidget):
         RSideLayout = QVBoxLayout()
         RSideLayout.addWidget(self.rotGB)
         RSideLayout.addWidget(self.exportBTN)
-        RSideLayout.addWidget(self.exportVidBTN)
+        RSideLayout.addWidget(self.playbackGB)
+        # RSideLayout.addWidget(self.exportVidBTN)
         RSideLayout.addWidget(self.resetAllBTN)
         RSideLayout.addItem(
             QSpacerItem(0, 10, QSizePolicy.Minimum, QSizePolicy.Expanding)
@@ -508,6 +561,7 @@ class VideoWidget(QWidget):
         self.LengthLBL.setText(
             f"Video length: {self.time_to_display(self.num_of_frames)}"
         )
+        self.resetAll()
 
         self.PropGB.setVisible(True)
         self.OpenBTN.setVisible(False)
@@ -518,8 +572,15 @@ class VideoWidget(QWidget):
 
     def closeVideo(self):
         """Closes the video, releases the cam"""
+
+        if self.timer.isActive():
+            self.StartPauseVideo()
+            self.timer.stop()
+
         if self.camera is not None:
             self.camera.release()
+            self.camera = None
+
         self.PropGB.setVisible(False)
         self.VidTimeLBL.setText("-/-")
         self.VidLBL.setPixmap(QPixmap("images/video.svg"))
@@ -532,34 +593,13 @@ class VideoWidget(QWidget):
         # resetting data
         self.OpenBTN.setVisible(True)
         self.ObjectLWG.clear()
-        self.removeRuler()
+        # self.removeRuler()
         self.cancelObject()
         self.ObjectLWG.clear()
         self.settingsDialog.rotationSettings.p1CMB.clear()
         self.settingsDialog.rotationSettings.p2CMB.clear()
         self.exportDialog.delete_object("ALL")
         self.exportDialog.delete_rotation("ALL")
-
-        # reset stored properties
-        self.camera = None
-        self.fps = None
-        self.num_of_frames = 0
-        self.x_offset = 0
-        self.y_offset = 0
-        self.zoom = 1  # from 1 goes down to 0
-        self.filename = ""
-        self.video_width = None
-        self.video_height = None
-        self.objects_to_track = []
-        self.rotations = []
-        self.point_tmp = None
-        self.rect_tmp = None  # x0, y0, x1, y1
-        self.section_stop = None
-        self.SectionStopLBL.setText("Stop: - ")
-        self.setresetStopBTN.setText("Set")
-        self.section_start = None
-        self.SectionStartLBL.setText("Stop: - ")
-        self.setresetStartBTN.setText("Set")
 
     def StartPauseVideo(self):
         """Starts and pauses the video"""
@@ -643,6 +683,9 @@ class VideoWidget(QWidget):
                     self.section_start,
                     self.section_stop,
                     self.objects_to_track,
+                    self.boxCHB.isChecked(),
+                    self.pointCHB.isChecked(),
+                    round(self.playbackSLD.value() * self.num_of_frames / 100),
                 )
 
             # crop and color
@@ -966,6 +1009,9 @@ class VideoWidget(QWidget):
             or self.section_start is None
             or self.section_stop is None
         ):
+            self.showWarningMessage(
+                "You must select the start and the end of the section to track!"
+            )
             return
 
         # reorganize the layout
@@ -987,7 +1033,13 @@ class VideoWidget(QWidget):
     def saveObject(self):
         """Saves temporary point and rectangle data in the objects_to_track list"""
         name = self.NameLNE.text()
-        if self.point_tmp is None or self.rect_tmp is None or name == "":
+        if name is None:
+            name = f"obj-{len(self.objects_to_track)}"
+        if self.point_tmp is None:
+            self.showWarningMessage("No point selected!")
+            return
+        if self.rect_tmp is None:
+            self.showWarningMessage("No region selected!")
             return
         # save object
         M = Motion(name, self.point_tmp, gui2tracker(self.rect_tmp))
@@ -1091,9 +1143,13 @@ class VideoWidget(QWidget):
         if (
             self.camera is None
             or self.section_start is None
-            and self.section_stop is None
+            or self.section_stop is None
         ):
+            self.showWarningMessage(
+                "You must select the start and the end of the section to track!"
+            )
             return
+
         # disconnect all signals
         try:
             self.VidLBL.moving.disconnect()
@@ -1115,8 +1171,11 @@ class VideoWidget(QWidget):
         if (
             self.camera is None
             or self.section_start is None
-            and self.section_stop is None
+            or self.section_stop is None
         ):
+            self.showWarningMessage(
+                "You must select the start and the end of the section to track!"
+            )
             return
 
             # disconnect all signals
@@ -1161,6 +1220,9 @@ class VideoWidget(QWidget):
             or self.section_start is None
             or self.section_stop is None
         ):
+            self.showWarningMessage(
+                "You must select the start and the end of the section to track!"
+            )
             return
         x, y = self.relative_to_cv(x, y)
         self.rect_tmp = (x, y, x, y)
@@ -1172,6 +1234,9 @@ class VideoWidget(QWidget):
             or self.section_start is None
             or self.section_stop is None
         ):
+            self.showWarningMessage(
+                "You must select the start and the end of the section to track!"
+            )
             return
         x1, y1 = self.relative_to_cv(x, y)
         x0, y0, _, _ = self.rect_tmp
@@ -1185,6 +1250,9 @@ class VideoWidget(QWidget):
             or self.section_start is None
             or self.section_stop is None
         ):
+            self.showWarningMessage(
+                "You must select the start and the end of the section to track!"
+            )
             return
         x1, y1 = self.relative_to_cv(x, y)
         x0, y0, _, _ = self.rect_tmp
@@ -1241,6 +1309,9 @@ class VideoWidget(QWidget):
             or self.section_start is None
             or self.section_stop is None
         ):
+            self.showWarningMessage(
+                "You must select the start and the end of the section to track!"
+            )
             return
         self.VidLBL.press.connect(lambda x, y: self.setRulerStart(x, y))
         self.VidLBL.moving.connect(lambda x, y: self.setRulerMove(x, y))
@@ -1270,6 +1341,9 @@ class VideoWidget(QWidget):
             or self.section_start is None
             or self.section_stop is None
         ):
+            self.showWarningMessage(
+                "You must select the start and the end of the section to track!"
+            )
             return
         self.ruler.rdy = False
         x1, y1 = self.relative_to_cv(x, y)
@@ -1357,6 +1431,9 @@ class VideoWidget(QWidget):
             or self.section_start is None
             or self.section_stop is None
         ):
+            self.showWarningMessage(
+                "You must select the start and the end of the section to track!"
+            )
             return
         x1, y1 = self.relative_to_cv(x, y)
         self.roi_rect = (x1, y1, x1, y1)
@@ -1369,6 +1446,9 @@ class VideoWidget(QWidget):
             or self.section_start is None
             or self.section_stop is None
         ):
+            self.showWarningMessage(
+                "You must select the start and the end of the section to track!"
+            )
             return
         x1, y1 = self.relative_to_cv(x, y)
         self.roi_rect = (self.roi_rect[0], self.roi_rect[1], x1, y1)
@@ -1442,7 +1522,7 @@ class VideoWidget(QWidget):
                 }
             elif filter == "Savitzky-Golay":
                 filter_settings = {
-                    "filter": "Savitzky-Golay",
+                    "filter": "SG",
                     "window": int(
                         self.settingsDialog.filterSettings.sgwindowLNE.text()
                     ),
@@ -1467,7 +1547,10 @@ class VideoWidget(QWidget):
                     "pol": int(self.settingsDialog.derivativeSettings.sgpolLNE.text()),
                 }
             else:
-                derivative_settings = None
+                derivative_settings = {
+                    "derivative": "FINDIFF",
+                    "acc": int(self.settingsDialog.derivativeSettings.apprLNE.text()),
+                }
 
             # running the tracker
             self.runTracker(
@@ -1528,6 +1611,13 @@ class VideoWidget(QWidget):
         msg.setIcon(QMessageBox.Warning)
         msg.exec_()
 
+    def showWarningMessage(self, message):
+        msg = QMessageBox()
+        msg.setWindowTitle("Warning!")
+        msg.setText(message)
+        msg.setIcon(QMessageBox.Warning)
+        msg.exec_()
+
     def trackingSucceeded(self):
         self.mode = True
         self.OpenBTN.setEnabled(False)
@@ -1535,11 +1625,14 @@ class VideoWidget(QWidget):
         self.TrackingSectionGB.setEnabled(False)
         self.ObjectsGB.setEnabled(False)
         self.ZoomControlGB.setEnabled(False)
-        self.RulerGB.setEnabled(False)
+        # self.RulerGB.setEnabled(False)
         self.exportBTN.setEnabled(True)
         self.exportVidBTN.setEnabled(True)
         self.resetAllBTN.setEnabled(True)
         self.rotGB.setEnabled(False)
+        self.playbackGB.setEnabled(True)
+        self.roiGB.setEnabled(False)
+        print(f"timestamp:{len(self.timestamp)}")
 
     def resetAll(self):
         # layout reorganization
@@ -1553,6 +1646,8 @@ class VideoWidget(QWidget):
         self.exportBTN.setEnabled(False)
         self.exportVidBTN.setEnabled(False)
         self.rotGB.setEnabled(False)
+        self.roiGB.setEnabled(True)
+        self.playbackGB.setEnabled(False)
 
         # reset properties
         self.section_start = 0  # to make the reset successful
@@ -1664,11 +1759,12 @@ class VideoWidget(QWidget):
 
                     # axis
                     if parameters["ax"] == "XT":
+                        print(f"data{data.shape}; position: {obj.position.shape}")
                         data[:, i + 1] = obj.position[:, 0]
                         cols.append(obj.name + " - X")
                         exp_ok = True
                     elif parameters["ax"] == "YT":
-                        data[:, i + 1] = obj.position[:, 1]
+                        data[:, i + 1] = -obj.position[:, 1]
                         cols.append(obj.name + " - Y")
                         exp_ok = True
                     title = "Position"
@@ -1681,7 +1777,7 @@ class VideoWidget(QWidget):
                         cols.append(obj.name + " - X")
                         exp_ok = True
                     elif parameters["ax"] == "YT":
-                        data[:, i + 1] = obj.velocity[:, 1]  # CHANGE IT WHEN READY
+                        data[:, i + 1] = -obj.velocity[:, 1]  # CHANGE IT WHEN READY
                         cols.append(obj.name + " - Y")
                         exp_ok = True
                     title = "Velocity"
@@ -1694,7 +1790,7 @@ class VideoWidget(QWidget):
                         cols.append(obj.name + " - X")
                         exp_ok = True
                     elif parameters["ax"] == "YT":
-                        data[:, i + 1] = obj.acceleration[:, 1]  # CHANGE IT WHEN READY
+                        data[:, i + 1] = -obj.acceleration[:, 1]  # CHANGE IT WHEN READY
                         cols.append(obj.name + " - Y")
                         exp_ok = True
                     title = "Acceletration"
@@ -1788,6 +1884,9 @@ class VideoWidget(QWidget):
                 self.section_stop,
                 save_name[0],
                 self.fps,
+                self.boxCHB.isChecked(),
+                self.pointCHB.isChecked(),
+                round(self.playbackSLD.value() * self.num_of_frames / 100),
             )
             self.progressDialog.updateName("Expoting video to " + save_name[0])
             self.progressDialog.rejected.connect(self.exporter.cancel)
@@ -1802,5 +1901,3 @@ if __name__ == "__main__":
     App = QApplication(sys.argv)
     root = VideoWidget()
     sys.exit(App.exec())
-
-# TODO: replace obj.position(line 1423)

@@ -1,3 +1,4 @@
+from sqlite3 import Timestamp
 import turtle
 from PyQt5.QtWidgets import (
     QDialog,
@@ -40,7 +41,18 @@ class ExportingThread(QThread):
     success = pyqtSignal()
     error_occured = pyqtSignal(str)
 
-    def __init__(self, camera, objects_to_track, start, stop, filename, fps):
+    def __init__(
+        self,
+        camera,
+        objects_to_track,
+        start,
+        stop,
+        filename,
+        fps,
+        box_bool,
+        point_bool,
+        trajectory_lenght,
+    ):
         self.camera = camera
         self.objects = objects_to_track
         self.section_start = start
@@ -48,6 +60,9 @@ class ExportingThread(QThread):
         self.filename = filename
         self.fps = fps
         self.is_running = True
+        self.box_bool = box_bool
+        self.point_bool = point_bool
+        self.trajectory_length = trajectory_lenght
         super(ExportingThread, self).__init__()
 
     def cancel(self):
@@ -70,7 +85,14 @@ class ExportingThread(QThread):
                 self.error_occured.emit("Unable to read video frame!")
                 break
             frame = display_objects(
-                frame, pos, self.section_start, self.section_stop, self.objects
+                frame,
+                pos,
+                self.section_start,
+                self.section_stop,
+                self.objects,
+                self.box_bool,
+                self.point_bool,
+                self.trajectory_length,
             )
             writer.write(frame)
             self.progressChanged.emit(
@@ -133,9 +155,8 @@ class TrackingThread(QThread):
             self.newObject.emit("Tracking object: " + M.name + "...")
 
             # reset previous data
-            M.rectangle_path = []
-            M.point_path = []
-            M.size_change = []
+            M.reset_data()
+            self.timestamp.clear()
 
             # creating the tracker
             if self.tracker_type == "BOOSTING":
@@ -210,7 +231,7 @@ class TrackingThread(QThread):
                         M.size_change.append((roi_box[2] / w0 + roi_box[3] / h0) / 2)
 
                     if j == 0:
-                        self.timestamp.append((i + 1) / self.fps)
+                        self.timestamp.append((i) / self.fps)
                     # progress
                     self.progress = math.ceil(
                         i / (self.section_stop - self.section_start) * 100
@@ -223,7 +244,6 @@ class TrackingThread(QThread):
 
                 if not self.is_running:
                     M.rectangle_path = []
-                    M.timestamp = []
                     break
 
             if not self.is_running:
@@ -243,6 +263,10 @@ class TrackingThread(QThread):
                 )
             elif self.filter_settings["filter"] == "Moving AVG":
                 M.position = moving_avg(M.point_path, self.filter_settings["window"])
+                ts = self.timestamp[0 : len(M.position)]
+                self.timestamp.clear()
+                self.timestamp.extend(ts)
+                print(f"timestamp:{len(self.timestamp)}; posi:{len(M.position)}")
 
             elif self.filter_settings["filter"] == "SG":
                 M.position = savgol(
@@ -250,11 +274,11 @@ class TrackingThread(QThread):
                     self.filter_settings["window"],
                     self.filter_settings["pol"],
                 )
-
+            print(M.position)
             ## DERIVATIVES ##
             # if self.filter
-            M.velocity = M.position
-            M.acceleration = M.position
+            # M.velocity = M.position
+            # M.acceleration = M.position
 
             if self.derivative_settings["derivative"] == "SG":
                 M.velocity = savgol_diff(
@@ -270,6 +294,13 @@ class TrackingThread(QThread):
                     self.derivative_settings["pol"],
                     2,
                     self.fps,
+                )
+            elif self.derivative_settings["derivative"] == "FINDIFF":
+                M.velocity = fin_diff(
+                    M.position, self.derivative_settings["acc"], 1, self.fps,
+                )
+                M.acceleration = fin_diff(
+                    M.position, self.derivative_settings["acc"], 2, self.fps,
                 )
 
         ### end of object-by-object for loop
@@ -550,6 +581,7 @@ class TrackingSettings(QDialog):
         derivativeLBL = QLabel("Derivative:")
         self.derivativeCMB = QComboBox()
         self.derivativeCMB.addItem("LOESS-coefficients")
+        self.derivativeCMB.addItem("Finite differences")
         self.derivativeCMB.currentTextChanged.connect(self.openDerivativeSettings)
 
         derivativeHLayout = QHBoxLayout()
@@ -757,6 +789,7 @@ class FilterSettings(QDialog):
         sgLayout = QVBoxLayout()
         sgLayout.addLayout(sgwindowLayout)
         sgLayout.addLayout(sgpolLayout)
+        sgLayout.addWidget(sgBTN)
         self.sgGB = QGroupBox("Savitzky-Golay")
         self.sgGB.setLayout(sgLayout)
 
@@ -811,19 +844,42 @@ class DerivativeSettings(QDialog):
         sgLayout = QVBoxLayout()
         sgLayout.addLayout(sgwindowLayout)
         sgLayout.addLayout(sgpolLayout)
+        sgLayout.addWidget(sgBTN)
         self.sgGB = QGroupBox("LOESS-coefficients")
         self.sgGB.setLayout(sgLayout)
 
+        # FINTIE DIFFERENCES
+        apprLBL = QLabel("Approximation order")
+        self.apprLNE = QLineEdit()
+        self.apprLNE.setValidator(QIntValidator(1, 20))
+        self.apprLNE.setText("9")
+        apprHLayout = QHBoxLayout()
+        apprHLayout.addWidget(apprLBL)
+        apprHLayout.addWidget(self.apprLNE)
+
+        apprBTN = QPushButton("Set")
+        apprBTN.clicked.connect(self.accept)
+
+        apprLayout = QVBoxLayout()
+        apprLayout.addLayout(apprHLayout)
+        apprLayout.addWidget(apprBTN)
+
+        self.apprGB = QGroupBox("Finite difference")
+        self.apprGB.setLayout(apprLayout)
+
         mainLayout = QVBoxLayout()
         mainLayout.addWidget(self.sgGB)
+        mainLayout.addWidget(self.apprGB)
 
         self.setLayout(mainLayout)
 
     def setDerivative(self, deriv_name):
         if deriv_name == "LOESS-coefficients":
             self.sgGB.setVisible(True)
+            self.apprGB.setVisible(False)
         else:
             self.sgGB.setVisible(False)
+            self.apprGB.setVisible(True)
 
 
 class TrackingProgress(QDialog):

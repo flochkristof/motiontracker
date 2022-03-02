@@ -1,0 +1,119 @@
+#main_window {
+    background-color: #797979;
+    color: #ffffff;
+}
+
+.QPushButton:enabled {
+    color: white;
+}
+
+.QPushButton:disabled {
+    color: #e2e2e2;
+}
+
+.QPushButton {
+    color: #ffffff;
+    border-radius: 10px;
+    border-width: 2px;
+    border-style: outset;
+    border-color: #ffffff;
+    background-color: #919191;
+    font-weight: bold;
+}
+
+.QPushButton:pressed {
+    background-color: #cecece;
+    border-style: inset;
+}
+
+.QPushButton#openBTN {
+    height: 20px;
+}
+
+.QPushButton#setresetStartBTN {
+    height: 16px;
+}
+
+.QPushButton#setresetStopBTN {
+    height: 16px;
+}
+
+.QPushButton#pointBTN {
+    height: 16px;
+}
+
+.QPushButton#rectBTN {
+    height: 16px;
+}
+
+.QPushButton#saveBTN {
+    height: 18px;
+}
+
+.QPushButton#cancelBTN {
+    height: 18px;
+}
+
+.QPushButton#setRulerBTN {
+    height: 20px;
+}
+
+.QPushButton#removeRulerBTN {
+    height: 18px;
+}
+
+.QPushButton#saveRulerBTN {
+    height: 18px;
+}
+
+.QPushButton#changeRulerVisibilityBTN {
+    height: 20px;
+}
+
+.QPushButton#setRoiBTN {
+    height: 20px;
+}
+
+.QPushButton#saveRoiBTN {
+    height: 18px;
+}
+
+.QPushButton#delRoiBTN {
+    height: 18px;
+}
+
+.QGroupBox {
+    color: white;
+    font-weight: bold;
+}
+
+.QLabel {
+    color: white;
+}
+
+.QPushButton:checked {
+    color: aquamarine;
+    border-color: aquamarine;
+}
+
+.QSlider::groove:horizontal {
+    border: 2px solid;
+    border-color: #ffffff;
+    border-radius: 5px;
+    height: 10px;
+    margin: 0px;
+    background-color: #abaaaa;
+    }
+
+.QSlider::handle:horizontal {
+    background-color: #797979;
+    border: 2px solid;
+    border-color: #ffffff;
+    border-radius: 5px;
+    width: 15px;
+    margin: -5px 0px;
+    }
+
+.QCheckBox {
+    color: #ffffff;
+}

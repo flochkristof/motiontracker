@@ -28,6 +28,16 @@ class Motion:
     def __str__(self):
         return self.name
 
+    def reset_data(self):
+        self.rectangle_path = []
+        self.point_path = []
+        self.size_change = []
+
+        # filtered, calculated output
+        self.position = None
+        self.velocity = None
+        self.acceleration = None
+
 
 class Rotation:
     """Object that stores rotation data"""

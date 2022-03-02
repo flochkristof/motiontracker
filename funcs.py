@@ -4,6 +4,7 @@ import numpy as np
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal import savgol_filter
 import cv2
+from findiff import FinDiff
 
 
 def get_from_list_by_name(list, name):
@@ -13,53 +14,90 @@ def get_from_list_by_name(list, name):
     return None
 
 
-def display_objects(frame, pos, section_start, section_stop, objects):
+def display_objects(
+    frame,
+    pos,
+    section_start,
+    section_stop,
+    objects,
+    box_bool,
+    point_bool,
+    trajectory_length,
+):
     """Draws tracked object onto the video frame for playback and export"""
     for obj in objects:
         if obj.visible:
             if (pos >= section_start - 1) and (pos <= section_stop):
                 if pos == section_start - 1:
-                    x, y = obj.point
-                    frame = cv2.drawMarker(frame, (x, y), (0, 0, 255), 0, thickness=2)
-                    x0, y0, x1, y1 = tracker2gui(obj.rectangle)
-                    frame = cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 0, 0), 2)
-                    cv2.putText(
-                        frame,
-                        obj.name,
-                        (x0, y0 - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5,
-                        (255, 0, 0),
-                        1,
-                        cv2.LINE_AA,
-                    )
+                    if point_bool:
+                        x, y = obj.point
+                        frame = cv2.drawMarker(
+                            frame, (x, y), (0, 0, 255), 0, thickness=2
+                        )
+                    if box_bool:
+                        x0, y0, x1, y1 = tracker2gui(obj.rectangle)
+                        frame = cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 0, 0), 2)
+                        cv2.putText(
+                            frame,
+                            obj.name,
+                            (x0, y0 - 5),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.5,
+                            (255, 0, 0),
+                            1,
+                            cv2.LINE_AA,
+                        )
                 else:
-                    x, y = obj.point_path[int(pos - section_start)]
-                    frame = cv2.drawMarker(
-                        frame, (int(x), int(y)), (0, 0, 255), 0, thickness=2
-                    )
-                    x, y = (
-                        obj.position[int(pos - section_start)][0],
-                        obj.position[int(pos - section_start)][1],
-                    )
-                    frame = cv2.drawMarker(
-                        frame, (int(x), int(y)), (0, 255, 255), 0, thickness=2,
-                    )
-                    x0, y0, x1, y1 = tracker2gui(
-                        obj.rectangle_path[int(pos - section_start)]
-                    )
-                    # print(f"{x0} {y0} {x1} {y1}")
-                    frame = cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 0, 0), 2)
-                    cv2.putText(
-                        frame,
-                        obj.name,
-                        (x0, y0 - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5,
-                        (255, 0, 0),
-                        1,
-                        cv2.LINE_AA,
-                    )
+                    if point_bool:
+                        x, y = obj.point_path[int(pos - section_start)]
+                        frame = cv2.drawMarker(
+                            frame, (int(x), int(y)), (0, 0, 255), 0, thickness=2
+                        )
+                        if pos - section_start < trajectory_length:
+                            for i in range(1, int(pos - section_start)):
+                                x0, y0 = obj.point_path[i - 1]
+                                x1, y1 = obj.point_path[i]
+                                # print(f"x:{x0}   y:{y0}   x:{x1}   y:{y1}")
+                                frame = cv2.line(
+                                    frame,
+                                    (int(x0), int(y0)),
+                                    (int(x1), int(y1)),
+                                    (0, 0, 255),
+                                    2,
+                                )
+                        else:
+                            for i in range(1, trajectory_length):
+                                x0, y0 = obj.point_path[
+                                    int(pos - section_start + i - trajectory_length - 1)
+                                ]
+                                x1, y1 = obj.point_path[
+                                    int(pos - section_start + i - trajectory_length)
+                                ]
+                                # print(f"x:{x0}   y:{y0}   x:{x1}   y:{y1}")
+                                frame = cv2.line(
+                                    frame,
+                                    (int(x0), int(y0)),
+                                    (int(x1), int(y1)),
+                                    (0, 0, 255),
+                                    2,
+                                )
+
+                    if box_bool:
+                        x0, y0, x1, y1 = tracker2gui(
+                            obj.rectangle_path[int(pos - section_start)]
+                        )
+                        # print(f"{x0} {y0} {x1} {y1}")
+                        frame = cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 0, 0), 2)
+                        cv2.putText(
+                            frame,
+                            obj.name,
+                            (x0, y0 - 5),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.5,
+                            (255, 0, 0),
+                            1,
+                            cv2.LINE_AA,
+                        )
     return frame
 
 
@@ -86,24 +124,24 @@ def get_unit(parameters):
             if parameters["prop"] == "POS":
                 return r"Position $\mathregular{(pixel)}$"
             elif parameters["prop"] == "VEL":
-                return r"Position $\mathregular{(\frac{pixel}{s})}$"
+                return r"Velocity $\mathregular{(\frac{pixel}{s})}$"
             elif parameters["prop"] == "ACC":
                 return r"Acceleration $\mathregular{(\frac{pixel}{s^{2}})}$"
     elif parameters["mode"] == "ROT":
         if parameters["unit"] == "DEG":
             if parameters["prop"] == "POS":
-                return r"Position $\mathregular{(^\circ)}$"
+                return r"Angular rotation $\mathregular{(^\circ)}$"
             elif parameters["prop"] == "VEL":
-                return r"Position $\mathregular{(\frac{^\circ}{s})}$"
+                return r"Angular velocity $\mathregular{(\frac{^\circ}{s})}$"
             elif parameters["prop"] == "ACC":
-                return r"Acceleration $\mathregular{(\frac{^\circ}{s^{2}})}$"
+                return r"Angular acceleration $\mathregular{(\frac{^\circ}{s^{2}})}$"
         elif parameters["unit"] == "RAD":
             if parameters["prop"] == "POS":
-                return r"Position $\mathregular{(rad)}$"
+                return r"Angular rotation $\mathregular{(rad)}$"
             elif parameters["prop"] == "VEL":
-                return r"Position $\mathregular{(\frac{rad}{s})}$"
+                return r"Angular velocity $\mathregular{(\frac{rad}{s})}$"
             elif parameters["prop"] == "ACC":
-                return r"Acceleration $\mathregular{(\frac{rad}{s^{2}})}$"
+                return r"Angular acceleration $\mathregular{(\frac{rad}{s^{2}})}$"
 
 
 def rad2deg_(data):
@@ -180,40 +218,73 @@ def moving_avg(data, w_len):
     window = np.ones(w_len) / w_len
     x = np.asarray([p[0] for p in data])
     y = np.asarray([p[1] for p in data])
-    x = np.convolve(data[:, 0], window, mode="valid")
-    y = np.convolve(data[:, 1], window, mode="valid")
+    x = np.convolve(x, window, mode="valid")
+    y = np.convolve(y, window, mode="valid")
     result = np.zeros((len(x), 2))
     result[:, 0] = x
     result[:, 1] = y
+    return result
 
 
 def savgol(data, window, pol):
     """Savitzky-Golay filter"""
+    # print("func called")
     x = np.asarray([p[0] for p in data])
+    # print(x)
     y = np.asarray([p[1] for p in data])
     xs = savgol_filter(x, window, pol)
+    # print(xs)
     ys = savgol_filter(y, window, pol)
     result = np.zeros((len(x), 2))
     result[:, 0] = xs
     result[:, 1] = ys
+    # print(result)
     return result
 
 
 def savgol_diff(data, window, pol, order, fps=1):
+    """Numerikus deriválás Savitzky-Golay filterrel"""
     if window % 2 == 0:
         window += 1
-    print(data)
-    x = data[:, 0]  # .T
-    y = data[:, 1]  # .transpose()
-    print(x)
+    # print(data)
+    x = data[:, 0]
+    y = data[:, 1]
+    # print(x)
     dx = savgol_filter(x, window, pol, deriv=order) * (fps) ** order
-    print(dx)
+    # print(dx)
     dy = savgol_filter(y, window, pol, deriv=order) * (fps) ** order
     result = np.zeros((len(x), 2))
 
     result[:, 0] = dx
     result[:, 1] = dy
     return result
+
+
+def fin_diff(data, accuracy, order, fps):
+    if accuracy % 2:
+        accuracy += 1
+
+    diff = FinDiff(0, 1 / fps, order, acc=accuracy)
+    x = data[:, 0]
+    y = data[:, 1]
+    result = np.zeros((len(x), 2))
+    result[:, 0] = diff(x)
+    result[:, 1] = diff(y)
+    return result
+
+
+"""def derivative_FinDiff(self, data, accuracy, order, time_scale):
+'''Véges differencia módszerrel való deriválás tetszőleges renddel'''
+step = 1/(self.fps*time_scale)
+d_dt = FinDiff(0, step, order, acc=accuracy)
+if isinstance(data[0], float) or isinstance(data[0], int):
+    return d_dt(data)
+elif len(data[0]) == 2 or isinstance(data[0], (list, tuple)):
+    result = np.array(data)
+    x = result[:,0]
+    y = result[:,1]
+    result[:,0], result[:,1] = d_dt(x), d_dt(y)
+    return result"""
 
 
 """
