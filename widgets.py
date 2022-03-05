@@ -1,5 +1,3 @@
-from sqlite3 import Timestamp
-import turtle
 from PyQt5.QtWidgets import (
     QDialog,
     QGroupBox,
@@ -23,7 +21,7 @@ from PyQt5.QtWidgets import (
     QButtonGroup,
     QFrame,
 )
-from PyQt5.QtGui import QMouseEvent, QCursor, QWheelEvent, QIntValidator
+from PyQt5.QtGui import QMouseEvent, QCursor, QWheelEvent, QIntValidator, QIcon
 from PyQt5.QtCore import QLine, QThread, Qt, pyqtSignal, QEventLoop, QPoint
 import math
 import cv2
@@ -156,7 +154,8 @@ class TrackingThread(QThread):
 
             # reset previous data
             M.reset_data()
-            self.timestamp.clear()
+            if j == 0:
+                self.timestamp.clear()
 
             # creating the tracker
             if self.tracker_type == "BOOSTING":
@@ -249,6 +248,7 @@ class TrackingThread(QThread):
             if not self.is_running:
                 break
 
+            print(f"timestamp{self.timestamp}")
             ### POST-PROCESSING START ###
             ## FILTERS ##
             self.newObject.emit("Post-processing... applying filters")
@@ -483,6 +483,10 @@ class TrackingSettings(QDialog):
         self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
         self.setWindowTitle("Tracking details")
         self.setModal(True)
+        with open("style/tracking.qss", "r") as style:
+            self.setStyleSheet(style.read())
+        self.setWindowIcon(QIcon("images/logo.svg"))
+        self.setObjectName("tracker_window")
 
         #### Additional Features ###
         # self.rotationCHB = QCheckBox("Track rotation")
@@ -525,10 +529,11 @@ class TrackingSettings(QDialog):
         self.sizeCHB = QCheckBox("Track size change")
         self.sizeCHB.stateChanged.connect(self.sizeMode)
         self.zoomNotificationLBL = QLabel(
-            "Only the CSRT algorithm is capable of handling the size change of an object!"
+            "Important! Only the CSRT algorithm is capable of handling the size change of an object!"
         )
         self.zoomNotificationLBL.setVisible(False)
         self.zoomNotificationLBL.setWordWrap(True)
+        self.zoomNotificationLBL.setObjectName("zoomnotificationLBL")
 
         ## organizing the layout
         algoLayout = QHBoxLayout()
@@ -558,13 +563,14 @@ class TrackingSettings(QDialog):
         fpsLayout.addWidget(self.fpsLNE)
 
         ### Filter ###
-        filterLBL = QLabel("Filter")
+        filterLBL = QLabel("Filter:")
         self.filterCMB = QComboBox()
         self.filterCMB.addItem("None")
         self.filterCMB.addItem("Gaussian")
         self.filterCMB.addItem("Moving AVG")
         self.filterCMB.addItem("Savitzky-Golay")
         self.filterCMB.currentTextChanged.connect(self.openFilterSettings)
+        self.filterCMB.setObjectName("filterCMB")
 
         filterHLayout = QHBoxLayout()
         filterHLayout.addWidget(filterLBL)
@@ -583,6 +589,7 @@ class TrackingSettings(QDialog):
         self.derivativeCMB.addItem("LOESS-coefficients")
         self.derivativeCMB.addItem("Finite differences")
         self.derivativeCMB.currentTextChanged.connect(self.openDerivativeSettings)
+        self.derivativeCMB.setObjectName("derivativeCMB")
 
         derivativeHLayout = QHBoxLayout()
         derivativeHLayout.addWidget(derivativeLBL)
@@ -626,6 +633,7 @@ class TrackingSettings(QDialog):
         ### TRACK button and final layout
         trackBTN = QPushButton("Track")
         trackBTN.clicked.connect(self.accept)
+        trackBTN.setObjectName("trackBTN")
 
         mainlayout = QVBoxLayout()
         mainlayout.addWidget(topGB)
@@ -690,6 +698,10 @@ class RotationSettings(QDialog):
         super().__init__(parent)
         self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
         self.setWindowTitle("Rotation settings")
+        self.setWindowIcon(QIcon("images/logo.svg"))
+        self.setObjectName("rotation")
+        with open("style/rotation.qss", "r") as style:
+            self.setStyleSheet(style.read())
         self.setModal(True)
         # self.setAttribute(Qt.WA_DeleteOnClose)
         instuctionLBL = QLabel("Select two points for for tracking")
@@ -726,6 +738,10 @@ class FilterSettings(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
+        self.setWindowIcon(QIcon("images/logo.svg"))
+        with open("style/filter-derivative.qss", "r") as style:
+            self.setStyleSheet(style.read())
+        self.setObjectName("filter")
         self.setWindowTitle("Filter settings")
         self.setModal(True)
 
@@ -822,6 +838,10 @@ class DerivativeSettings(QDialog):
         super().__init__(parent)
         self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
         self.setWindowTitle("Derivative settings")
+        self.setWindowIcon(QIcon("images/logo.svg"))
+        with open("style/filter-derivative.qss", "r") as style:
+            self.setStyleSheet(style.read())
+        self.setObjectName("derivative")
         self.setModal(True)
 
         # SAVITZKY-GOLAY
@@ -889,6 +909,10 @@ class TrackingProgress(QDialog):
         super().__init__(parent)
         self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
         self.setWindowTitle("Calculation in progress...")
+        self.setWindowIcon(QIcon("images/logo.svg"))
+        with open("style/progress.qss", "r") as style:
+            self.setStyleSheet(style.read())
+        self.setObjectName("progress")
         self.setModal(True)
         Layout = QVBoxLayout()
         self.label = QLabel()
@@ -917,6 +941,10 @@ class ExportDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
+        self.setWindowIcon(QIcon("images/logo.svg"))
+        self.setObjectName("export_dialog")
+        with open("style/export.qss", "r") as style:
+            self.setStyleSheet(style.read())
         self.setWindowTitle("Export options")
         self.setModal(True)
 
@@ -1096,9 +1124,9 @@ class ExportDialog(QDialog):
 
         self.setLayout(self.Layout)
 
-    def exec_(self):
+    def exec_(self, size):
         self.manage_rotation()
-        self.manage_size()
+        self.manage_size(size)
         self.manage_mov()
         return super().exec_()
 
@@ -1116,9 +1144,9 @@ class ExportDialog(QDialog):
         else:
             self.rotFrame.setHidden(True)
 
-    def manage_size(self):
+    def manage_size(self, size):
         # print(len(self.size_checkboxes))
-        if len(self.size_checkboxes) != 0:
+        if size != 0:
             self.sizeFrame.setHidden(False)
         else:
             self.sizeFrame.setHidden(True)
@@ -1222,7 +1250,15 @@ class ExportDialog(QDialog):
         ]
         self.parameters["objects"] = objs
         self.get_movement_parameters()
-        self.accept()
+        if (
+            "mode"
+            and "units"
+            and "out"
+            and "objects"
+            and "prop"
+            and "ax" in self.parameters
+        ):
+            self.accept()
 
     def export_movement(self):
         self.parameters.clear()
@@ -1233,7 +1269,15 @@ class ExportDialog(QDialog):
         ]
         self.parameters["objects"] = objs
         self.get_movement_parameters()
-        self.accept()
+        if (
+            "mode"
+            and "units"
+            and "out"
+            and "objects"
+            and "prop"
+            and "ax" in self.parameters
+        ):
+            self.accept()
 
     def plot_rotation(self):
         self.parameters.clear()
@@ -1244,7 +1288,8 @@ class ExportDialog(QDialog):
         ]
         self.parameters["rotations"] = rots
         self.get_rotation_parameters()
-        self.accept()
+        if "mode" and "units" and "out" and "rotations" and "prop" in self.parameters:
+            self.accept()
 
     def export_rotation(self):
         self.parameters.clear()
@@ -1255,16 +1300,18 @@ class ExportDialog(QDialog):
         ]
         self.parameters["rotations"] = rots
         self.get_rotation_parameters()
-        self.accept()
+        if "mode" and "units" and "out" and "rotations" and "prop" in self.parameters:
+            self.accept()
 
     def plot_size(self):
         self.parameters.clear()
         self.parameters["out"] = "PLOT"
         self.parameters["mode"] = "SIZ"
         objs = [
-            checkbox.text() for checkbox in self.rot_checkboxes if checkbox.isChecked()
+            checkbox.text() for checkbox in self.size_checkboxes if checkbox.isChecked()
         ]
         self.parameters["objects"] = objs
+        print(self.parameters)
         self.accept()
 
     def export_size(self):
@@ -1338,6 +1385,7 @@ class PlotDialog(QWidget):
         super().__init__(parent)
         # self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
         self.setWindowTitle("Figure")
+        self.setWindowIcon(QIcon("images/logo.svg"))
         self.setAttribute(Qt.WA_DeleteOnClose)
         # self.setModal(False)
 

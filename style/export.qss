@@ -1,0 +1,52 @@
+#export_dialog {
+    background-color: #797979;
+}
+
+.QLabel {
+    color: white;
+}
+
+.QRadioButton {
+    color: white;
+}
+
+.QGroupBox {
+    color: white;
+    font-weight: bold;
+}
+
+.QCheckBox {
+    color: #ffffff;
+}
+
+.QCheckBox::indicator
+{
+    border : 2px solid white;
+    width : 18px;
+    height : 18px;
+    border-radius : 3px;
+    background-color: #919191;
+}
+
+.QCheckBox::indicator:checked {
+    image: url("images/tick.png")
+}
+
+
+
+.QPushButton {
+    color: #ffffff;
+    border-radius: 10px;
+    border-width: 2px;
+    border-style: outset;
+    border-color: #ffffff;
+    background-color: #919191;
+    font-weight: bold;
+    min-width: 60px;
+    height: 20px;
+}
+
+.QPushButton:pressed {
+    background-color: #cecece;
+    border-style: inset;
+}

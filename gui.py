@@ -190,6 +190,7 @@ class VideoWidget(QWidget):
 
         # displaying existing objects
         self.ObjectLWG = ObjectListWidget()
+        self.ObjectLWG.setObjectName("obj_list")
         self.ObjectLWG.delete.connect(lambda name: self.deleteObject(name))
         self.ObjectLWG.changeVisibility.connect(
             lambda name: self.changeObjectDisplay(name)
@@ -412,18 +413,20 @@ class VideoWidget(QWidget):
 
         # Track button
         self.TrackBTN = QPushButton()
-        self.TrackBTN.setFixedSize(QSize(200, 40))
+        # self.TrackBTN.setFixedSize(QSize(200, 40))
         self.TrackBTN.setText("Track")
         self.TrackBTN.setEnabled(False)
-        self.TrackBTN.setStyleSheet("font-size: 16pt; font-weight: bold;")
+        self.TrackBTN.setObjectName("trackBTN")
         self.TrackBTN.clicked.connect(self.showTrackingSettings)
 
         # Rotation
         addRotBTN = QPushButton("Track rotation")
         addRotBTN.clicked.connect(self.addRotation)
+        addRotBTN.setObjectName("addRotBTN")
 
         # to display existing rotation objects
         self.rotLWG = RotationListWidget()
+        self.rotLWG.setObjectName("rot_list")
 
         # rotation layout & groupbox
         rotLayout = QVBoxLayout()
@@ -441,20 +444,24 @@ class VideoWidget(QWidget):
         self.exportBTN = QPushButton("Plot - Export")
         self.exportBTN.clicked.connect(self.showExportDialog)
         self.exportBTN.setEnabled(False)
+        self.exportBTN.setObjectName("exportBTN")
 
         # Video export
         self.exportVidBTN = QPushButton("Export Video")
         self.exportVidBTN.clicked.connect(self.exportVideo)
-        # self.exportVidBTN.setEnabled(False)
+        self.exportVidBTN.setObjectName("exportVidBTN")
+        self.exportVidBTN.setEnabled(False)
 
         # Playback options
         propertiesLBL = QLabel("Displayed properties:")
+        propertiesLBL.setObjectName("propertiesLBL")
         self.boxCHB = QCheckBox("Box")
         self.boxCHB.setChecked(True)
         self.pointCHB = QCheckBox("Point")
         self.pointCHB.setChecked(True)
         # self.trajectoryCHB = QCheckBox("Trajectory")
         trajectoryLBL = QLabel("Trajectory length:")
+        trajectoryLBL.setObjectName("trajectoryLBL")
         self.playbackSLD = QSlider(Qt.Horizontal)
         self.playbackSLD.setMinimum(0)
         self.playbackSLD.setMaximum(100)
@@ -474,14 +481,11 @@ class VideoWidget(QWidget):
         self.playbackGB.setFixedWidth(200)
         self.playbackGB.setEnabled(False)
 
-        # Video export
-        self.exportVidBTN = QPushButton("Export Video")
-        self.exportVidBTN.clicked.connect(self.exportVideo)
-        self.exportVidBTN.setEnabled(False)
-
         # Reset all button
         self.resetAllBTN = QPushButton("Reset ALL")
+
         self.resetAllBTN.clicked.connect(self.resetAll)
+        self.resetAllBTN.setObjectName("resetAllBTN")
 
         # LSideLayout
         LSideLayout = QVBoxLayout()
@@ -493,7 +497,7 @@ class VideoWidget(QWidget):
         LSideLayout.addWidget(self.RulerGB)
         LSideLayout.addWidget(self.roiGB)
         LSideLayout.addItem(
-            QSpacerItem(0, 10, QSizePolicy.Minimum, QSizePolicy.Expanding)
+            QSpacerItem(0, 10, QSizePolicy.Maximum, QSizePolicy.Expanding)
         )
         LSideLayout.addWidget(self.TrackBTN)
 
@@ -503,10 +507,11 @@ class VideoWidget(QWidget):
         RSideLayout.addWidget(self.exportBTN)
         RSideLayout.addWidget(self.playbackGB)
         # RSideLayout.addWidget(self.exportVidBTN)
-        RSideLayout.addWidget(self.resetAllBTN)
         RSideLayout.addItem(
-            QSpacerItem(0, 10, QSizePolicy.Minimum, QSizePolicy.Expanding)
+            QSpacerItem(0, 10, QSizePolicy.Maximum, QSizePolicy.Expanding)
         )
+        RSideLayout.addWidget(self.resetAllBTN)
+        RSideLayout.addItem(QSpacerItem(0, 10, QSizePolicy.Maximum))
         RSideLayout.addWidget(self.VidTimeLBL)
         RSideLayout.setContentsMargins(0, 0, 0, 12)
 
@@ -592,14 +597,7 @@ class VideoWidget(QWidget):
 
         # resetting data
         self.OpenBTN.setVisible(True)
-        self.ObjectLWG.clear()
-        # self.removeRuler()
-        self.cancelObject()
-        self.ObjectLWG.clear()
-        self.settingsDialog.rotationSettings.p1CMB.clear()
-        self.settingsDialog.rotationSettings.p2CMB.clear()
-        self.exportDialog.delete_object("ALL")
-        self.exportDialog.delete_rotation("ALL")
+        self.resetAll()
 
     def StartPauseVideo(self):
         """Starts and pauses the video"""
@@ -1034,6 +1032,8 @@ class VideoWidget(QWidget):
         """Saves temporary point and rectangle data in the objects_to_track list"""
         name = self.NameLNE.text()
         if name is None:
+            name = f"obj-{len(self.objects_to_track)}"
+        elif name == "":
             name = f"obj-{len(self.objects_to_track)}"
         if self.point_tmp is None:
             self.showWarningMessage("No point selected!")
@@ -1606,6 +1606,9 @@ class VideoWidget(QWidget):
 
     def showErrorMessage(self, message):
         msg = QMessageBox()
+        with open("style/message.qss", "r") as style:
+            msg.setStyleSheet(style.read())
+        msg.setWindowIcon(QIcon("images/logo.svg"))
         msg.setWindowTitle("Error occured!")
         msg.setText(message)
         msg.setIcon(QMessageBox.Warning)
@@ -1613,6 +1616,9 @@ class VideoWidget(QWidget):
 
     def showWarningMessage(self, message):
         msg = QMessageBox()
+        with open("style/message.qss", "r") as style:
+            msg.setStyleSheet(style.read())
+        msg.setWindowIcon(QIcon("images/logo.svg"))
         msg.setWindowTitle("Warning!")
         msg.setText(message)
         msg.setIcon(QMessageBox.Warning)
@@ -1620,7 +1626,6 @@ class VideoWidget(QWidget):
 
     def trackingSucceeded(self):
         self.mode = True
-        self.OpenBTN.setEnabled(False)
         self.PropGB.setEnabled(False)
         self.TrackingSectionGB.setEnabled(False)
         self.ObjectsGB.setEnabled(False)
@@ -1629,15 +1634,15 @@ class VideoWidget(QWidget):
         self.exportBTN.setEnabled(True)
         self.exportVidBTN.setEnabled(True)
         self.resetAllBTN.setEnabled(True)
-        self.rotGB.setEnabled(False)
+        if len(self.objects_to_track) >= 2:
+            self.rotGB.setEnabled(True)
         self.playbackGB.setEnabled(True)
         self.roiGB.setEnabled(False)
-        print(f"timestamp:{len(self.timestamp)}")
+        # print(f"timestamp:{len(self.timestamp)}")
 
     def resetAll(self):
         # layout reorganization
         self.mode = False
-        self.OpenBTN.setEnabled(True)
         self.PropGB.setEnabled(True)
         self.TrackingSectionGB.setEnabled(True)
         self.ObjectsGB.setEnabled(True)
@@ -1725,14 +1730,13 @@ class VideoWidget(QWidget):
 
     def showExportDialog(self):
         self.exportDialog.setRuler(self.ruler.rdy)
-        if self.exportDialog.exec_():
+        if self.exportDialog.exec_(self.settingsDialog.sizeCHB.isChecked()):
             parameters = self.exportDialog.parameters
             # print(parameters)
-            if len(parameters) != 0:
-                return self.getPlotData(parameters)
+            self.getPlotData(parameters)
 
     def getPlotData(self, parameters):
-        print(parameters)
+        # print(parameters)
         # create the numpy aray for the data
         if not self.mode:
             return
@@ -1759,7 +1763,7 @@ class VideoWidget(QWidget):
 
                     # axis
                     if parameters["ax"] == "XT":
-                        print(f"data{data.shape}; position: {obj.position.shape}")
+                        # print(f"data{data.shape}; position: {obj.position.shape}")
                         data[:, i + 1] = obj.position[:, 0]
                         cols.append(obj.name + " - X")
                         exp_ok = True
@@ -1802,8 +1806,11 @@ class VideoWidget(QWidget):
 
         elif parameters["mode"] == "ROT":
             data = np.zeros((len(self.timestamp), len(parameters["rotations"]) + 1,))
+            # print(data)
+            # print(f"data: {(data.shape)}")
             cols = []
             data[:, 0] = np.asarray(self.timestamp)
+            # print(f"timestamp: {self.timestamp}")
             cols.append("Time (s)")
 
             for i in range(len(parameters["rotations"])):
@@ -1814,11 +1821,13 @@ class VideoWidget(QWidget):
                     return
 
                 if parameters["prop"] == "POS":
+                    # print(f"rotation: {rot.rotation.shape}")
                     data[:, i + 1] = rot.rotation
                     cols.append(rot.P1.name + " + " + rot.P2.name + " rotation")
                     title = "Rotation"
                     exp_ok = True
                 elif parameters["prop"] == "VEL":
+                    # print(f"rotation: {rot.rotation.shape}")
                     data[:, i + 1] = rot.rotation
                     cols.append(rot.P1.name + " + " + rot.P2.name + " angular velocity")
                     title = "Angular velocity"

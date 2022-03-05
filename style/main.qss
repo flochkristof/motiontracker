@@ -3,6 +3,16 @@
     color: #ffffff;
 }
 
+#obj_list {
+    border-radius: 5px;
+    background-color: #cecece;
+}
+
+#rot_list {
+    border-radius: 5px;
+    background-color: #cecece;
+}
+
 .QPushButton:enabled {
     color: white;
 }
@@ -27,7 +37,7 @@
 }
 
 .QPushButton#openBTN {
-    height: 20px;
+    height: 26px;
 }
 
 .QPushButton#setresetStartBTN {
@@ -82,6 +92,38 @@
     height: 18px;
 }
 
+.QPushButton#addRotBTN {
+    height: 20px;
+}
+
+.QPushButton#trackBTN {
+    font-size: 16pt;
+    font-weight: bold;
+    height:40;
+    width:200;
+}
+
+.QPushButton#exportBTN {
+    height: 20px;
+}
+
+.QPushButton#exportVidBTN {
+    height: 20px;
+}
+
+.QPushButton#resetAllBTN {
+    font-size: 14pt;
+    font-weight: bold;
+    height:40;
+    width:200;
+}
+
+.QLineEdit {
+    background-color: #cecece;
+    border-radius: 5px;
+
+}
+
 .QGroupBox {
     color: white;
     font-weight: bold;
@@ -90,6 +132,11 @@
 .QLabel {
     color: white;
 }
+
+.QLabel#trajectoryLBL {
+    font-weight: bold;
+}
+
 
 .QPushButton:checked {
     color: aquamarine;
@@ -116,4 +163,17 @@
 
 .QCheckBox {
     color: #ffffff;
+}
+
+QCheckBox::indicator
+{
+    border : 2px solid white;
+    width : 18px;
+    height : 18px;
+    border-radius : 3px;
+    background-color: #919191;
+}
+
+.QCheckBox::indicator:checked {
+    image: url("images/tick.png")
 }
