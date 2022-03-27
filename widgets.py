@@ -168,8 +168,8 @@ class TrackingThread(QThread):
                 tracker = cv2.legacy.TrackerTLD_create()
             if self.tracker_type == "MEDIANFLOW":
                 tracker = cv2.legacy.TrackerMedianFlow_create()
-            if self.tracker_type == "GOTURN":
-                tracker = cv2.TrackerGOTURN_create()
+            # if self.tracker_type == "GOTURN":
+            #    tracker = cv2.TrackerGOTURN_create()
             if self.tracker_type == "MOSSE":
                 tracker = cv2.legacy.TrackerMOSSE_create()
             if self.tracker_type == "CSRT":
@@ -188,6 +188,10 @@ class TrackingThread(QThread):
                 frame = crop_roi(frame, self.roi_rect)
 
             tracker.init(frame, rect2cropped(M.rectangle, self.roi_rect))
+            M.rectangle_path.append(M.rectangle)
+            M.point_path.append(M.point)
+            if j == 0:
+                self.timestamp.append(0)
 
             # for the calculation of the point
             dy = (M.point[1] - M.rectangle[1]) / M.rectangle[3]
@@ -230,7 +234,7 @@ class TrackingThread(QThread):
                         M.size_change.append((roi_box[2] / w0 + roi_box[3] / h0) / 2)
 
                     if j == 0:
-                        self.timestamp.append((i) / self.fps)
+                        self.timestamp.append((i + 1) / self.fps)
                     # progress
                     self.progress = math.ceil(
                         i / (self.section_stop - self.section_start) * 100
@@ -248,7 +252,7 @@ class TrackingThread(QThread):
             if not self.is_running:
                 break
 
-            print(f"timestamp{self.timestamp}")
+            # print(f"timestamp{self.timestamp}")
             ### POST-PROCESSING START ###
             ## FILTERS ##
             self.newObject.emit("Post-processing... applying filters")
@@ -274,7 +278,7 @@ class TrackingThread(QThread):
                     self.filter_settings["window"],
                     self.filter_settings["pol"],
                 )
-            print(M.position)
+            # print(M.position)
             ## DERIVATIVES ##
             # if self.filter
             # M.velocity = M.position
@@ -973,11 +977,13 @@ class ExportDialog(QDialog):
         # AXES
         self.xtRDB = QRadioButton("x(t)")
         self.ytRDB = QRadioButton("y(t)")
+        self.bothRDB = QRadioButton("Both")
 
         axBGP = QGroupBox("Axis")
         axLayout = QVBoxLayout()
         axLayout.addWidget(self.xtRDB)
         axLayout.addWidget(self.ytRDB)
+        axLayout.addWidget(self.bothRDB)
         axBGP.setLayout(axLayout)
 
         # UNITS
@@ -1339,6 +1345,8 @@ class ExportDialog(QDialog):
             self.parameters["ax"] = "XT"
         elif self.ytRDB.isChecked():
             self.parameters["ax"] = "YT"
+        elif self.bothRDB.isChecked():
+            self.parameters["ax"] = "BOTH"
         else:
             self.parameters.clear()
 

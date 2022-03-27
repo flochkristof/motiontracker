@@ -28,76 +28,76 @@ def display_objects(
     for obj in objects:
         if obj.visible:
             if (pos >= section_start - 1) and (pos <= section_stop):
-                if pos == section_start - 1:
-                    if point_bool:
-                        x, y = obj.point
-                        frame = cv2.drawMarker(
-                            frame, (x, y), (0, 0, 255), 0, thickness=2
-                        )
-                    if box_bool:
-                        x0, y0, x1, y1 = tracker2gui(obj.rectangle)
-                        frame = cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 0, 0), 2)
-                        cv2.putText(
-                            frame,
-                            obj.name,
-                            (x0, y0 - 5),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.5,
-                            (255, 0, 0),
-                            1,
-                            cv2.LINE_AA,
-                        )
-                else:
-                    if point_bool:
-                        x, y = obj.point_path[int(pos - section_start)]
-                        frame = cv2.drawMarker(
-                            frame, (int(x), int(y)), (0, 0, 255), 0, thickness=2
-                        )
-                        if pos - section_start < trajectory_length:
-                            for i in range(1, int(pos - section_start)):
-                                x0, y0 = obj.point_path[i - 1]
-                                x1, y1 = obj.point_path[i]
-                                # print(f"x:{x0}   y:{y0}   x:{x1}   y:{y1}")
-                                frame = cv2.line(
-                                    frame,
-                                    (int(x0), int(y0)),
-                                    (int(x1), int(y1)),
-                                    (0, 0, 255),
-                                    2,
-                                )
-                        else:
-                            for i in range(1, trajectory_length):
-                                x0, y0 = obj.point_path[
-                                    int(pos - section_start + i - trajectory_length - 1)
-                                ]
-                                x1, y1 = obj.point_path[
-                                    int(pos - section_start + i - trajectory_length)
-                                ]
-                                # print(f"x:{x0}   y:{y0}   x:{x1}   y:{y1}")
-                                frame = cv2.line(
-                                    frame,
-                                    (int(x0), int(y0)),
-                                    (int(x1), int(y1)),
-                                    (0, 0, 255),
-                                    2,
-                                )
+                # if pos == section_start - 1:
+                #    if point_bool:
+                #        x, y = obj.point
+                #        frame = cv2.drawMarker(
+                #            frame, (x, y), (0, 0, 255), 0, thickness=2
+                #        )
+                #    if box_bool:
+                #        x0, y0, x1, y1 = tracker2gui(obj.rectangle)
+                #        frame = cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 0, 0), 2)
+                #        cv2.putText(
+                #            frame,
+                #            obj.name,
+                #            (x0, y0 - 5),
+                #            cv2.FONT_HERSHEY_SIMPLEX,
+                #            0.5,
+                #            (255, 0, 0),
+                #            1,
+                #            cv2.LINE_AA,
+                #        )
+                # else:
+                if point_bool:
+                    x, y = obj.point_path[int(pos - section_start + 1)]
+                    frame = cv2.drawMarker(
+                        frame, (int(x), int(y)), (0, 0, 255), 0, thickness=2
+                    )
+                    if pos - section_start < trajectory_length:
+                        for i in range(1, int(pos - section_start + 2)):
+                            x0, y0 = obj.point_path[i - 1]
+                            x1, y1 = obj.point_path[i]
+                            # print(f"x:{x0}   y:{y0}   x:{x1}   y:{y1}")
+                            frame = cv2.line(
+                                frame,
+                                (int(x0), int(y0)),
+                                (int(x1), int(y1)),
+                                (0, 0, 255),
+                                2,
+                            )
+                    else:
+                        for i in range(0, trajectory_length + +1):
+                            x0, y0 = obj.point_path[
+                                int(pos - section_start + i - trajectory_length)
+                            ]
+                            x1, y1 = obj.point_path[
+                                int(pos - section_start + i - trajectory_length + 1)
+                            ]
+                            # print(f"x:{x0}   y:{y0}   x:{x1}   y:{y1}")
+                            frame = cv2.line(
+                                frame,
+                                (int(x0), int(y0)),
+                                (int(x1), int(y1)),
+                                (0, 0, 255),
+                                2,
+                            )
 
-                    if box_bool:
-                        x0, y0, x1, y1 = tracker2gui(
-                            obj.rectangle_path[int(pos - section_start)]
-                        )
-                        # print(f"{x0} {y0} {x1} {y1}")
-                        frame = cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 0, 0), 2)
-                        cv2.putText(
-                            frame,
-                            obj.name,
-                            (x0, y0 - 5),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.5,
-                            (255, 0, 0),
-                            1,
-                            cv2.LINE_AA,
-                        )
+                if box_bool:
+                    x0, y0, x1, y1 = tracker2gui(
+                        obj.rectangle_path[int(pos - section_start + 1)]
+                    )
+                    # print(f"{x0} {y0} {x1} {y1}")
+                    frame = cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 0, 0), 2)
+                    cv2.putText(
+                        frame,
+                        obj.name,
+                        (x0, y0 - 5),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (255, 0, 0),
+                        1,
+                        cv2.LINE_AA,
+                    )
     return frame
 
 
@@ -189,9 +189,6 @@ def list2np(data):
     result[:, 0] = x
     result[:, 1] = y
     return result
-
-
-# def time_data_join(timestamp,)
 
 
 def gaussian(data, window, sigma):
@@ -349,3 +346,34 @@ def tracker2gui(rectangle):
     """Converts the rectangle representation from the tracker to the gui (x,y,w,h)->(x0,y0,x1,y1)"""
     x, y, w, h = rectangle
     return (int(x), int(y), int(x + w), int(y + h))
+
+
+def draw_grid(x_num, y_num, frame, color_name):
+    """Draws grid onto the frame with the given parameters"""
+    dx = frame.shape[1] / x_num
+    dy = frame.shape[0] / y_num
+
+    # OpenCV uses BGR channels
+    if color_name == "black":
+        color = (0, 0, 0)
+    elif color_name == "white":
+        color = (255, 255, 255)
+    elif color_name == "red":
+        color = (0, 0, 255)
+    elif color_name == "blue":
+        color = (255, 0, 0)
+    elif color_name == "green":
+        color = (0, 255, 0)
+
+    for x in np.linspace(start=dx, stop=frame.shape[1] - dx, num=x_num):
+        x = int(round(x))
+        cv2.line(
+            frame, (x, 0), (x, frame.shape[0]), color=color, thickness=1,
+        )
+
+    for y in np.linspace(start=dy, stop=frame.shape[0] - dy, num=y_num):
+        y = int(round(y))
+        cv2.line(
+            frame, (0, y), (frame.shape[1], y), color=color, thickness=1,
+        )
+    return frame

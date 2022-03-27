@@ -19,8 +19,10 @@ from PyQt5.QtWidgets import (
     QGroupBox,
     QMessageBox,
     QCheckBox,
+    QComboBox,
 )
 import cv2
+from matplotlib.pyplot import xlabel
 from numpy import rad2deg
 from widgets import (
     ExportDialog,
@@ -65,6 +67,7 @@ class VideoWidget(QWidget):
         self.rect_tmp = None  # x0, y0, x1, y1
         self.ruler = Ruler()
         self.mode = False  # False-> before tracking; True->after tracking
+        self.grid_displayable = False
 
         self.timer = QTimer()
         self.timer.setTimerType(Qt.PreciseTimer)
@@ -294,6 +297,45 @@ class VideoWidget(QWidget):
         ZoomOutBTN.setFixedSize(QSize(40, 70))
         ZoomOutBTN.clicked.connect(lambda: self.changeZoom(0.1))
 
+        # Grid
+        GridNumLBL = QLabel("Number of lines:")
+        GridNumLBL.setObjectName("GridNumLBL")
+        XGridLBL = QLabel("X:")
+        YGridLBL = QLabel("Y:")
+
+        self.XGridLNE = QLineEdit()
+        self.XGridLNE.setValidator(QIntValidator(1, 500))
+        self.XGridLNE.setText("10")
+        self.XGridLNE.textChanged.connect(self.GridUpdate)
+        self.YGridLNE = QLineEdit()
+        self.YGridLNE.setValidator(QIntValidator(1, 500))
+        self.YGridLNE.setText("10")
+        self.YGridLNE.textChanged.connect(self.GridUpdate)
+
+        self.GridColorCMB = QComboBox()
+        self.GridColorCMB.addItems(["black", "white", "red", "green", "blue"])
+        self.GridColorCMB.currentTextChanged.connect(self.GridUpdate)
+
+        XLayout = QHBoxLayout()
+        XLayout.addWidget(XGridLBL)
+        XLayout.addWidget(self.XGridLNE)
+        YLayout = QHBoxLayout()
+        YLayout.addWidget(YGridLBL)
+        YLayout.addWidget(self.YGridLNE)
+
+        GridLayout = QVBoxLayout()
+        GridLayout.addWidget(GridNumLBL)
+        GridLayout.addLayout(XLayout)
+        GridLayout.addLayout(YLayout)
+        GridLayout.addWidget(self.GridColorCMB)
+
+        self.GridGB = QGroupBox("Grid")
+        self.GridGB.setObjectName("GridGB")
+        self.GridGB.setFixedWidth(200)
+        self.GridGB.setCheckable(True)
+        self.GridGB.setLayout(GridLayout)
+        self.GridGB.toggled.connect(self.GridUpdate)
+
         # Label for video frames
         self.VidLBL = VideoLabel()
         self.VidLBL.setAlignment(Qt.AlignCenter)
@@ -493,7 +535,8 @@ class VideoWidget(QWidget):
         LSideLayout.addWidget(self.PropGB)
         LSideLayout.addWidget(self.TrackingSectionGB)
         LSideLayout.addWidget(self.ObjectsGB)
-        LSideLayout.addWidget(self.ZoomControlGB)
+        # LSideLayout.addWidget(self.GridGB)
+        # LSideLayout.addWidget(self.ZoomControlGB)
         LSideLayout.addWidget(self.RulerGB)
         LSideLayout.addWidget(self.roiGB)
         LSideLayout.addItem(
@@ -510,6 +553,8 @@ class VideoWidget(QWidget):
         RSideLayout.addItem(
             QSpacerItem(0, 10, QSizePolicy.Maximum, QSizePolicy.Expanding)
         )
+        RSideLayout.addWidget(self.GridGB)
+        RSideLayout.addWidget(self.ZoomControlGB)
         RSideLayout.addWidget(self.resetAllBTN)
         RSideLayout.addItem(QSpacerItem(0, 10, QSizePolicy.Maximum))
         RSideLayout.addWidget(self.VidTimeLBL)
@@ -540,7 +585,7 @@ class VideoWidget(QWidget):
         filename = QFileDialog.getOpenFileName(
             self,
             "Open Video",
-            "./",
+            "user/Documents/",
             "MP4 file (*.mp4);;MOV file (*.mov);;AVI file (*.avi);; MKV file (*.mkv)",
         )[0]
         if filename != "":
@@ -686,6 +731,15 @@ class VideoWidget(QWidget):
                     round(self.playbackSLD.value() * self.num_of_frames / 100),
                 )
 
+            # Grid
+            if self.GridGB.isChecked():
+                frame = draw_grid(
+                    int(self.XGridLNE.text()),
+                    int(self.YGridLNE.text()),
+                    frame,
+                    self.GridColorCMB.currentText(),
+                )
+
             # crop and color
             frame = crop_frame(frame, self.x_offset, self.y_offset, self.zoom)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -775,9 +829,33 @@ class VideoWidget(QWidget):
                     frame = cv2.circle(
                         frame, (self.ruler.x1, self.ruler.y1), 5, (0, 0, 255), -1
                     )
+
+                # ROI Rectangle
                 if self.roi_rect is not None:
                     x0, y0, x1, y1 = self.roi_rect
                     frame = cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 255, 0), 2)
+
+                    # playback
+                if self.mode:
+                    frame = display_objects(
+                        frame,
+                        self.camera.get(cv2.CAP_PROP_POS_FRAMES) - 1,
+                        self.section_start,
+                        self.section_stop,
+                        self.objects_to_track,
+                        self.boxCHB.isChecked(),
+                        self.pointCHB.isChecked(),
+                        round(self.playbackSLD.value() * self.num_of_frames / 100),
+                    )
+
+                # Grid
+                if self.GridGB.isChecked():
+                    frame = draw_grid(
+                        int(self.XGridLNE.text()),
+                        int(self.YGridLNE.text()),
+                        frame,
+                        self.GridColorCMB.currentText(),
+                    )
 
                 frame = crop_frame(frame, self.x_offset, self.y_offset, self.zoom)
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -918,6 +996,14 @@ class VideoWidget(QWidget):
                 self.video_height / 2 - self.zoom * self.video_height / 2
             )
 
+        self.ReloadCurrentFrame()
+
+    def GridUpdate(self):
+        if self.GridGB.isChecked():
+            if self.XGridLNE.text() == "" or int(self.XGridLNE.text()) == 0:
+                self.XGridLNE.setText("1")
+            if self.YGridLNE.text() == "" or int(self.YGridLNE.text()) == 0:
+                self.YGridLNE.setText("1")
         self.ReloadCurrentFrame()
 
     def relative_to_cv(self, x_rel, y_rel):
@@ -1744,7 +1830,10 @@ class VideoWidget(QWidget):
         exp_ok = False
         data = None
         if parameters["mode"] == "MOV" and len(parameters["objects"]):
-            data = np.zeros((len(self.timestamp), len(parameters["objects"]) + 1,))
+            if parameters["ax"] == "BOTH":
+                data = np.zeros((len(self.timestamp), len(parameters["objects"]) + 2))
+            else:
+                data = np.zeros((len(self.timestamp), len(parameters["objects"]) + 1))
             cols = []
 
             # get timestamp
@@ -1771,6 +1860,12 @@ class VideoWidget(QWidget):
                         data[:, i + 1] = -obj.position[:, 1]
                         cols.append(obj.name + " - Y")
                         exp_ok = True
+                    elif parameters["ax"] == "BOTH":
+                        data[:, i + 1] = obj.position[:, 0]
+                        cols.append(obj.name + " - X")
+                        data[:, i + 2] = -obj.position[:, 1]  # CHANGE IT WHEN READY
+                        cols.append(obj.name + " - Y")
+                        exp_ok = True
                     title = "Position"
 
                 elif parameters["prop"] == "VEL":
@@ -1784,6 +1879,12 @@ class VideoWidget(QWidget):
                         data[:, i + 1] = -obj.velocity[:, 1]  # CHANGE IT WHEN READY
                         cols.append(obj.name + " - Y")
                         exp_ok = True
+                    elif parameters["ax"] == "BOTH":
+                        data[:, i + 1] = obj.velocity[:, 0]
+                        cols.append(obj.name + " - X")
+                        data[:, i + 2] = -obj.velocity[:, 1]  # CHANGE IT WHEN READY
+                        cols.append(obj.name + " - Y")
+                        exp_ok = True
                     title = "Velocity"
 
                 elif parameters["prop"] == "ACC":
@@ -1795,6 +1896,12 @@ class VideoWidget(QWidget):
                         exp_ok = True
                     elif parameters["ax"] == "YT":
                         data[:, i + 1] = -obj.acceleration[:, 1]  # CHANGE IT WHEN READY
+                        cols.append(obj.name + " - Y")
+                        exp_ok = True
+                    elif parameters["ax"] == "BOTH":
+                        data[:, i + 1] = obj.acceleration[:, 0]
+                        cols.append(obj.name + " - X")
+                        data[:, i + 2] = -obj.acceleration[:, 1]  # CHANGE IT WHEN READY
                         cols.append(obj.name + " - Y")
                         exp_ok = True
                     title = "Acceletration"
