@@ -20,10 +20,12 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QCheckBox,
     QComboBox,
+    QSplashScreen,
 )
 import cv2
 from matplotlib.pyplot import xlabel
 from numpy import rad2deg
+from sympy import rotations
 from widgets import (
     ExportDialog,
     ExportingThread,
@@ -37,6 +39,8 @@ from widgets import (
     ObjectListWidget,
     Ruler,
     TrackingProgress,
+    PostProcessSettings,
+    PostProcesserThread,
 )
 from math import fabs, floor, ceil
 from funcs import *
@@ -48,37 +52,44 @@ class VideoWidget(QWidget):
     def __init__(self):
         super(VideoWidget, self).__init__()
 
-        self.camera = None
-        self.fps = None
-        self.num_of_frames = 0
-        self.x_offset = 0
-        self.y_offset = 0
-        self.zoom = 1  # from 1 goes down to 0
-        self.section_start = None
-        self.section_stop = None
-        self.roi_rect = None
-        self.filename = ""
-        self.video_width = None
-        self.video_height = None
-        self.objects_to_track = []
-        self.rotations = []
-        self.timestamp = []
-        self.point_tmp = None
-        self.rect_tmp = None  # x0, y0, x1, y1
-        self.ruler = Ruler()
-        self.mode = False  # False-> before tracking; True->after tracking
-        self.grid_displayable = False
+        self.camera = None  # cv2.VideoCapture object
+        self.fps = None  # fps read from file
+        self.num_of_frames = 0  # nember of frames in video
+        self.x_offset = 0  # x-offset of the zoomed in window
+        self.y_offset = 0  # y-offset of the zommed in window
+        self.zoom = 1  # rate of zoom: from 1 goes down to 0
+        self.section_start = None  # index of the starting frame of the tracked section
+        self.section_stop = None  # index of the ending frame of the tracked section
+        self.roi_rect = None  # Range-of interest rectangle, if selected
+        self.filename = ""  # name of the opened video file
+        self.video_width = None  # width of the opened video
+        self.video_height = None  # height of the opened video
+        self.objects_to_track = []  # list to store the tracked objects
+        self.rotations = []  # list to store the tracked rotations
+        self.timestamp = []  # list to store the timestamps after the tracking
+        self.point_tmp = (
+            None  # temporary variable for point selection of the tracked objects
+        )
+        self.rect_tmp = None  # temporary variable for region selection of the tracked objects (x0, y0, x1, y1)
+        self.ruler = Ruler()  # ruler object to store calibration data
+        self.mode = False  # False: before tracking, True: after successfull tracking
+        self.grid_displayable = False  # To properly display grid
 
-        self.timer = QTimer()
+        self.timer = (
+            QTimer()
+        )  # To play the video, calls the display function of the next frame every tick
         self.timer.setTimerType(Qt.PreciseTimer)
-        self.setGeometry(100, 100, 1280, 720)  # x, y, w, h
-        self.installEventFilter(self)
-        self.initUI()
-        self.showMaximized()
+
+        self.setGeometry(100, 100, 1280, 720)  # Default geometry (x, y, w, h)
+        self.installEventFilter(self)  # To register mouse clicks and key presses
+
+        self.initUI()  # initialize UI
+        self.showMaximized()  # full window
+
         self.show()
 
     def initUI(self):
-        """Creating and configuring the user interface"""
+        """Creates and configures the user interface"""
 
         # Styling
         self.setObjectName("main_window")
@@ -153,11 +164,11 @@ class VideoWidget(QWidget):
         self.NewObjectBTN.setFixedHeight(50)
         self.NewObjectBTN.clicked.connect(self.addNewObject)
 
-        # object name
+        # Object name
         self.NameLNE = QLineEdit()
         self.NameLNE.setVisible(False)
 
-        # object point
+        # Object point
         self.PickPointBTN = QPushButton()
         self.PickPointBTN.setText("Point")
         self.PickPointBTN.clicked.connect(self.pickPointStart)
@@ -165,33 +176,34 @@ class VideoWidget(QWidget):
         self.PickPointBTN.setCheckable(True)
         self.PickPointBTN.setObjectName("pointBTN")
 
-        # object area rectangle
+        # Object region rectangle
         self.PickRectangleBTN = QPushButton()
-        self.PickRectangleBTN.setText("Rectangle")
+        self.PickRectangleBTN.setText("Region")
         self.PickRectangleBTN.clicked.connect(self.pickRectStart)
         self.PickRectangleBTN.setVisible(False)
         self.PickRectangleBTN.setCheckable(True)
         self.PickRectangleBTN.setObjectName("rectBTN")
 
-        # save object
+        # Save object
         self.SaveBTN = QPushButton()
         self.SaveBTN.setText("Save")
         self.SaveBTN.clicked.connect(self.saveObject)
         self.SaveBTN.setVisible(False)
         self.SaveBTN.setObjectName("saveBTN")
 
-        # canceling object creating
+        # Canceling object creation
         self.CancelBTN = QPushButton()
         self.CancelBTN.setText("Cancel")
         self.CancelBTN.clicked.connect(self.cancelObject)
         self.CancelBTN.setVisible(False)
         self.CancelBTN.setObjectName("cancelBTN")
 
+        # Order into layout
         self.PickLayout = QHBoxLayout()
         self.PickLayout.addWidget(self.PickPointBTN)
         self.PickLayout.addWidget(self.PickRectangleBTN)
 
-        # displaying existing objects
+        # Displaying existing objects
         self.ObjectLWG = ObjectListWidget()
         self.ObjectLWG.setObjectName("obj_list")
         self.ObjectLWG.delete.connect(lambda name: self.deleteObject(name))
@@ -220,13 +232,13 @@ class VideoWidget(QWidget):
         self.StartPauseBTN.setMinimumSize(QSize(40, 40))
         self.StartPauseBTN.clicked.connect(self.StartPauseVideo)
 
-        # stops the video, releases the camera, resets everything
+        # Stops the video, releases the camera, resets everything
         StopBTN = QPushButton()
         StopBTN.setIcon(QIcon("images/stop.svg"))
         StopBTN.setMinimumSize(QSize(40, 40))
         StopBTN.clicked.connect(self.closeVideo)
 
-        # jumping forward in the video
+        # Jumping forward in the video
         self.ForwardBTN = QPushButton()
         self.ForwardBTN.setIcon(QIcon("images/forward.svg"))
         self.ForwardBTN.setMinimumSize(QSize(40, 40))
@@ -238,6 +250,18 @@ class VideoWidget(QWidget):
         self.BackwardBTN.setMinimumSize(QSize(40, 40))
         self.BackwardBTN.clicked.connect(self.JumpBackward)
 
+        # jump to the first frqme of the video
+        self.StartBTN = QPushButton()
+        self.StartBTN.setIcon(QIcon("images/start.svg"))
+        self.StartBTN.setMinimumSize(QSize(40, 40))
+        self.StartBTN.clicked.connect(self.JumpStart)
+
+        # jump to the last frame of the video
+        self.EndBTN = QPushButton()
+        self.EndBTN.setIcon(QIcon("images/end.svg"))
+        self.EndBTN.setMinimumSize(QSize(40, 40))
+        self.EndBTN.clicked.connect(self.JumpEnd)
+
         # slider for easier navigation
         self.VideoSLD = QSlider(Qt.Horizontal)
         self.VideoSLD.setMinimum(0)
@@ -247,10 +271,12 @@ class VideoWidget(QWidget):
 
         # Add controllers to layout
         PlayerControlLayout = QHBoxLayout()
+        PlayerControlLayout.addWidget(self.StartBTN)
+        PlayerControlLayout.addWidget(self.BackwardBTN)
         PlayerControlLayout.addWidget(self.StartPauseBTN)
         PlayerControlLayout.addWidget(StopBTN)
-        PlayerControlLayout.addWidget(self.BackwardBTN)
         PlayerControlLayout.addWidget(self.ForwardBTN)
+        PlayerControlLayout.addWidget(self.EndBTN)
         PlayerControlLayout.addWidget(self.VideoSLD)
 
         # Zoom and move control buttons
@@ -343,7 +369,7 @@ class VideoWidget(QWidget):
         self.VidLBL.setStyleSheet("background-color: #c9c9c9")
         self.VidLBL.setPixmap(QPixmap("images/video.svg"))
 
-        # Label for timestap
+        # Label for timestamp
         self.VidTimeLBL = QLabel()
         self.VidTimeLBL.setText("-/-")
         self.VidTimeLBL.setAlignment(Qt.AlignCenter)
@@ -397,7 +423,7 @@ class VideoWidget(QWidget):
         self.removeRulerBTN.setText("Delete")
         self.removeRulerBTN.setVisible(False)
         self.removeRulerBTN.clicked.connect(self.removeRuler)
-        self.removeRulerBTN.setObjectName("ewmoveRulerBTN")
+        self.removeRulerBTN.setObjectName("removeRulerBTN")
 
         # hiding displaying the ruler
         self.changeRulerVisibilityBTN = QPushButton()
@@ -430,19 +456,19 @@ class VideoWidget(QWidget):
         self.setRoiBTN.clicked.connect(self.setRoi)
         self.setRoiBTN.setObjectName("setRoiBTN")
 
-        # save roi
+        # Save roi
         self.saveRoiBTN = QPushButton("Save")
         self.saveRoiBTN.clicked.connect(self.saveRoi)
         self.saveRoiBTN.setVisible(False)
         self.saveRoiBTN.setObjectName("saveRoiBTN")
 
-        # delete roi
+        # Delete roi
         self.delRoiBTN = QPushButton("Delete")
         self.delRoiBTN.clicked.connect(self.delRoi)
         self.delRoiBTN.setVisible(False)
         self.delRoiBTN.setObjectName("delRoiBTN")
 
-        # roi into layout & groupbox
+        # ROI into layout & groupbox
         roiLayout = QVBoxLayout()
         roiLayout.addWidget(self.setRoiBTN)
         roiLayout.addWidget(self.saveRoiBTN)
@@ -574,7 +600,9 @@ class VideoWidget(QWidget):
         # initializing dialogs
         self.settingsDialog = TrackingSettings()
         self.progressDialog = TrackingProgress()
+        self.postProcessDialog = PostProcessSettings()
         self.exportDialog = ExportDialog()
+        self.exportDialog.export.connect(self.getPlotData, Qt.UniqueConnection)
         # self.PlotDialog = PlotDialog()
 
         # Overall layout
@@ -611,26 +639,35 @@ class VideoWidget(QWidget):
         self.LengthLBL.setText(
             f"Video length: {self.time_to_display(self.num_of_frames)}"
         )
+
+        # reset any previous existing data
         self.resetAll()
 
+        # Reorganize layout
         self.PropGB.setVisible(True)
         self.OpenBTN.setVisible(False)
-        self.VidLBL.wheel.connect(self.changeZoom)
 
+        # Connect to timer and zoom
+        self.VidLBL.wheel.connect(self.changeZoom)
         self.timer.timeout.connect(self.nextFrame)
+
+        # load first frame
         self.nextFrame()
 
     def closeVideo(self):
         """Closes the video, releases the cam"""
 
+        # disablé timer
         if self.timer.isActive():
             self.StartPauseVideo()
             self.timer.stop()
 
+        # release camera
         if self.camera is not None:
             self.camera.release()
             self.camera = None
 
+        # reorganize layout
         self.PropGB.setVisible(False)
         self.VidTimeLBL.setText("-/-")
         self.VidLBL.setPixmap(QPixmap("images/video.svg"))
@@ -647,6 +684,7 @@ class VideoWidget(QWidget):
     def StartPauseVideo(self):
         """Starts and pauses the video"""
 
+        # check if there is a video opened
         if self.camera is None:
             self.StartPauseBTN.setChecked(False)
             # no popup needed
@@ -698,9 +736,17 @@ class VideoWidget(QWidget):
                 self.StartPauseBTN.setIcon(QIcon("images/play.svg"))
                 return
 
-        # display
+        # Read and display frame
         ret, frame = self.camera.read()
         if ret:
+            # Grid
+            if self.GridGB.isChecked():
+                frame = draw_grid(
+                    int(self.XGridLNE.text()),
+                    int(self.YGridLNE.text()),
+                    frame,
+                    self.GridColorCMB.currentText(),
+                )
 
             # ruler
             if self.ruler.displayable() and self.ruler.visible:
@@ -731,15 +777,6 @@ class VideoWidget(QWidget):
                     round(self.playbackSLD.value() * self.num_of_frames / 100),
                 )
 
-            # Grid
-            if self.GridGB.isChecked():
-                frame = draw_grid(
-                    int(self.XGridLNE.text()),
-                    int(self.YGridLNE.text()),
-                    frame,
-                    self.GridColorCMB.currentText(),
-                )
-
             # crop and color
             frame = crop_frame(frame, self.x_offset, self.y_offset, self.zoom)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -759,11 +796,13 @@ class VideoWidget(QWidget):
                 Qt.KeepAspectRatio,
                 Qt.SmoothTransformation,
             )
+
+            # display label
             self.VidLBL.setPixmap(pix)
 
             # move the slider
             pos_in_frames = self.camera.get(cv2.CAP_PROP_POS_FRAMES)
-            slider_pos = round(pos_in_frames / self.num_of_frames * 10000)
+            slider_pos = round((pos_in_frames) / self.num_of_frames * 10000)
             self.modifyTimestampLBL(pos_in_frames)
             self.VideoSLD.blockSignals(True)
             self.VideoSLD.setValue(slider_pos)
@@ -778,155 +817,212 @@ class VideoWidget(QWidget):
     def ReloadCurrentFrame(self):
         """Reloads and displays the current frame"""
 
-        if self.camera is not None:
-            ret, frame = self.camera.retrieve()
-            if ret:
-                # some kind of gate needed
-                if self.camera.get(cv2.CAP_PROP_POS_FRAMES) == self.section_start:
-                    # previous
-                    for obj in self.objects_to_track:
-                        if obj.visible:
-                            x, y = obj.point
-                            frame = cv2.drawMarker(
-                                frame, (x, y), (0, 0, 255), 0, thickness=2
-                            )
-                            x0, y0, x1, y1 = tracker2gui(obj.rectangle)
-                            frame = cv2.rectangle(
-                                frame, (x0, y0), (x1, y1), (255, 0, 0), 2
-                            )
-                            cv2.putText(
-                                frame,
-                                obj.name,
-                                (x0, y0 - 5),
-                                cv2.FONT_HERSHEY_SIMPLEX,
-                                0.5,
-                                (255, 0, 0),
-                                1,
-                                cv2.LINE_AA,
-                            )
-                    # current
-                    if self.point_tmp is not None:
-                        x, y = self.point_tmp
+        # check if there is a video opened
+        if self.camera is None:
+            return
+
+        # retrieve current frame
+        ret, frame = self.camera.retrieve()
+        if ret:
+            # Grid
+            if self.GridGB.isChecked():
+                frame = draw_grid(
+                    int(self.XGridLNE.text()),
+                    int(self.YGridLNE.text()),
+                    frame,
+                    self.GridColorCMB.currentText(),
+                )
+
+            # First frame of the section
+            if self.camera.get(cv2.CAP_PROP_POS_FRAMES) == self.section_start:
+                # display objects
+                for obj in self.objects_to_track:
+                    if obj.visible:
+                        x, y = obj.point
                         frame = cv2.drawMarker(
                             frame, (x, y), (0, 0, 255), 0, thickness=2
                         )
-                    if self.rect_tmp is not None:
-                        x0, y0, x1, y1 = self.rect_tmp
+                        x0, y0, x1, y1 = tracker2gui(obj.rectangle)
                         frame = cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 0, 0), 2)
+                        cv2.putText(
+                            frame,
+                            obj.name,
+                            (x0, y0 - 5),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.5,
+                            (255, 0, 0),
+                            1,
+                            cv2.LINE_AA,
+                        )
+                # Display object selection point
+                if self.point_tmp is not None:
+                    x, y = self.point_tmp
+                    frame = cv2.drawMarker(frame, (x, y), (0, 0, 255), 0, thickness=2)
 
-                # ruler
-                if self.ruler.displayable() and self.ruler.visible:
-                    frame = cv2.line(
-                        frame,
-                        (self.ruler.x0, self.ruler.y0),
-                        (self.ruler.x1, self.ruler.y1),
-                        (0, 0, 255),
-                        2,
-                    )
-                    frame = cv2.circle(
-                        frame, (self.ruler.x0, self.ruler.y0), 5, (0, 0, 255), -1
-                    )
-                    frame = cv2.circle(
-                        frame, (self.ruler.x1, self.ruler.y1), 5, (0, 0, 255), -1
-                    )
+                # Display object selection rectangle
+                if self.rect_tmp is not None:
+                    x0, y0, x1, y1 = self.rect_tmp
+                    frame = cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 0, 0), 2)
 
-                # ROI Rectangle
-                if self.roi_rect is not None:
-                    x0, y0, x1, y1 = self.roi_rect
-                    frame = cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 255, 0), 2)
+            # ROI Rectangle
+            if self.roi_rect is not None:
+                x0, y0, x1, y1 = self.roi_rect
+                frame = cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 255, 0), 2)
 
-                    # playback
-                if self.mode:
-                    frame = display_objects(
-                        frame,
-                        self.camera.get(cv2.CAP_PROP_POS_FRAMES) - 1,
-                        self.section_start,
-                        self.section_stop,
-                        self.objects_to_track,
-                        self.boxCHB.isChecked(),
-                        self.pointCHB.isChecked(),
-                        round(self.playbackSLD.value() * self.num_of_frames / 100),
-                    )
-
-                # Grid
-                if self.GridGB.isChecked():
-                    frame = draw_grid(
-                        int(self.XGridLNE.text()),
-                        int(self.YGridLNE.text()),
-                        frame,
-                        self.GridColorCMB.currentText(),
-                    )
-
-                frame = crop_frame(frame, self.x_offset, self.y_offset, self.zoom)
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                img = QImage(
+            # ruler
+            if self.ruler.displayable() and self.ruler.visible:
+                frame = cv2.line(
                     frame,
-                    frame.shape[1],
-                    frame.shape[0],
-                    frame.shape[1] * frame.shape[2],
-                    QImage.Format_RGB888,
+                    (self.ruler.x0, self.ruler.y0),
+                    (self.ruler.x1, self.ruler.y1),
+                    (0, 0, 255),
+                    2,
                 )
-                pix = QPixmap.fromImage(img)
-                pix = pix.scaled(
-                    self.VidLBL.width(),
-                    self.VidLBL.height(),
-                    Qt.KeepAspectRatio,
-                    Qt.SmoothTransformation,
+                frame = cv2.circle(
+                    frame, (self.ruler.x0, self.ruler.y0), 5, (0, 0, 255), -1
                 )
-                self.VidLBL.setPixmap(pix)
+                frame = cv2.circle(
+                    frame, (self.ruler.x1, self.ruler.y1), 5, (0, 0, 255), -1
+                )
+
+            # playback after tracking
+            if self.mode:
+                frame = display_objects(
+                    frame,
+                    self.camera.get(cv2.CAP_PROP_POS_FRAMES) - 1,
+                    self.section_start,
+                    self.section_stop,
+                    self.objects_to_track,
+                    self.boxCHB.isChecked(),
+                    self.pointCHB.isChecked(),
+                    round(self.playbackSLD.value() * self.num_of_frames / 100),
+                )
+
+            # crop and color
+            frame = crop_frame(frame, self.x_offset, self.y_offset, self.zoom)
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+            # convert from opencv to pyqt
+            img = QImage(
+                frame,
+                frame.shape[1],
+                frame.shape[0],
+                frame.shape[1] * frame.shape[2],
+                QImage.Format_RGB888,
+            )
+            pix = QPixmap.fromImage(img)
+            pix = pix.scaled(
+                self.VidLBL.width(),
+                self.VidLBL.height(),
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation,
+            )
+
+            # display in label
+            self.VidLBL.setPixmap(pix)
 
     def JumpForward(self):
         "Jumps formard 10 frames"
+
+        # check if there is a video opened
         if self.camera is None:
             return
+
+        # get current position
         pos = self.camera.get(cv2.CAP_PROP_POS_FRAMES) + 10
+
+        # override invalid position
         if pos > self.num_of_frames:
             pos = self.num_of_frames - 1
+
+        # set position
         self.camera.set(cv2.CAP_PROP_POS_FRAMES, pos)
+
+        # load the frame
         self.nextFrame()
 
     def JumpBackward(self):
         "Jumps back 10 frames"
+
+        # check if there is a video opened
         if self.camera is None:
             return
+
+        # get current position
         pos = self.camera.get(cv2.CAP_PROP_POS_FRAMES) - 10
+
+        # override invalid position
         if pos < 0:
             pos = 0
+
+        # set position
         self.camera.set(cv2.CAP_PROP_POS_FRAMES, pos)
+
+        # load the frame
+        self.nextFrame()
+
+    def JumpStart(self):
+        """Jumps to the starting frame"""
+
+        # check if there is a video opened
+        if self.camera is None:
+            return
+
+        # set position
+        self.camera.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
+        # load the frame
+        self.nextFrame()
+
+    def JumpEnd(self):
+        """Jumps to the ending frame"""
+
+        # check if there is a video opened
+        if self.camera is None:
+            return
+
+        # set position
+        self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.num_of_frames - 1)
+
+        # load the frame
         self.nextFrame()
 
     def positionVideo(self):
         """Positions the video according to the Slider value"""
+
+        # check if there is a video opened
         if self.camera is None:
             return
+
+        # load position from slider
         pos = self.VideoSLD.value()
         pos_in_frames = round(pos / 10000 * self.num_of_frames)
-        """
-        if self.section_start is not None:
-            if pos_in_frames < self.section_start:
-                pos_in_frames = self.section_start  # - 1
-                self.VideoSLD.setValue(
-                    floor(10000 * pos_in_frames / self.num_of_frames)
-                )
-        if self.section_stop is not None:
-            if pos_in_frames > self.section_stop:
-                pos_in_frames = self.section_stop
-                self.VideoSLD.setValue(
-                    floor(10000 * pos_in_frames / self.num_of_frames)
-                )"""
+
+        # set position
         self.camera.set(cv2.CAP_PROP_POS_FRAMES, pos_in_frames)
+
+        # load the frame
         self.nextFrame()
 
     def resizeEvent(self, e):
-        "Handles the resizing od the window"
+        "Handles the resizing of the window"
+        # reloads the frame
         self.ReloadCurrentFrame()
+
+        # execute parent functions
         return super().resizeEvent(e)
 
     def changeXoffset(self, delta):
         """Adjusts the X offset of the video displaying label"""
+
+        # check if there is a video opened
         if self.camera is None:
             return
+
+        # update the offset
         x_new = self.x_offset + delta
+
+        # constrain with the boundaries
         if ceil(x_new + self.zoom * self.video_width / 2) >= floor(
             self.video_width / 2
         ):
@@ -936,13 +1032,21 @@ class VideoWidget(QWidget):
         ):
             x_new = -floor(self.video_width / 2 - self.zoom * self.video_width / 2)
         self.x_offset = x_new
+
+        # reload frame
         self.ReloadCurrentFrame()
 
     def changeYoffset(self, delta):
         """Adjusts the Y offset of the video displaying label"""
+
+        # check if there is a video opened
         if self.camera is None:
             return
+
+        # update offset
         y_new = self.y_offset + delta
+
+        # constrain with the boundaries
         if ceil(y_new + self.zoom * self.video_height / 2) >= floor(
             self.video_height / 2
         ):
@@ -953,14 +1057,18 @@ class VideoWidget(QWidget):
         ):
             y_new = -floor(self.video_height / 2 - self.zoom * self.video_height / 2)
         self.y_offset = y_new
+
+        # reload frame
         self.ReloadCurrentFrame()
 
     def changeZoom(self, delta):
         """Zooms in or out of the frame, adjusts the offsets accordingly"""
+
+        # chack is there is a video opened
         if self.camera is None:
             return
 
-        # changing the zoom
+        # change the zoom
         z = self.zoom + delta
         if z <= 0.1:
             z = 0.1
@@ -968,7 +1076,7 @@ class VideoWidget(QWidget):
             z = 1
         self.zoom = z
 
-        # adjusting offset if needed
+        # adjusting offset by constrains
         if ceil(self.x_offset + self.zoom * self.video_width / 2) >= floor(
             self.video_width / 2
         ):
@@ -996,14 +1104,20 @@ class VideoWidget(QWidget):
                 self.video_height / 2 - self.zoom * self.video_height / 2
             )
 
+        # reload frame
         self.ReloadCurrentFrame()
 
     def GridUpdate(self):
+        """Updates the grid"""
+
+        # constrain the input
         if self.GridGB.isChecked():
             if self.XGridLNE.text() == "" or int(self.XGridLNE.text()) == 0:
                 self.XGridLNE.setText("1")
             if self.YGridLNE.text() == "" or int(self.YGridLNE.text()) == 0:
                 self.YGridLNE.setText("1")
+
+        # reload frame
         self.ReloadCurrentFrame()
 
     def relative_to_cv(self, x_rel, y_rel):
@@ -1028,7 +1142,7 @@ class VideoWidget(QWidget):
 
     def time_to_display(self, index):
         """Calculates and formats the timesptamp from the givan fram index"""
-        current_time = index / self.fps
+        current_time = (index - 1) / self.fps
         h = int(current_time / 3600)
         min = int(current_time / 60) - 60 * h
         s = (current_time) - 60 * min
@@ -1038,8 +1152,12 @@ class VideoWidget(QWidget):
 
     def setresetStart(self):
         """Sets and resets the start of the tracked section"""
+
+        # check if there is a video opened
         if self.camera is None:
             return
+
+        # select frame
         if self.section_start is None:
             self.section_start = self.camera.get(cv2.CAP_PROP_POS_FRAMES)
             self.SectionStartLBL.setText(
@@ -1063,8 +1181,12 @@ class VideoWidget(QWidget):
 
     def setresetStop(self):
         """Sets and resets the end of the tracked section"""
+
+        # check if there is a video opened
         if self.camera is None:
             return
+
+        # select frame
         if self.section_stop is None:
             self.section_stop = self.camera.get(cv2.CAP_PROP_POS_FRAMES)
             self.SectionStopLBL.setText(
@@ -1088,6 +1210,8 @@ class VideoWidget(QWidget):
 
     def addNewObject(self):
         """Cunfigures the GUI for setting the point and tectangle that will be used for the tracking"""
+
+        # check if video is opened, tracking section selected
         if (
             self.camera is None
             or self.section_start is None
@@ -1105,17 +1229,20 @@ class VideoWidget(QWidget):
         self.PickRectangleBTN.setVisible(True)
         self.SaveBTN.setVisible(True)
         self.CancelBTN.setVisible(True)
-
-        self.camera.set(cv2.CAP_PROP_POS_FRAMES, (self.section_start - 1))
-        self.nextFrame()
-        self.ReloadCurrentFrame()
         self.VideoSLD.setEnabled(False)
         self.StartPauseBTN.setEnabled(False)
         self.ForwardBTN.setEnabled(False)
         self.BackwardBTN.setEnabled(False)
 
+        # set position
+        self.camera.set(cv2.CAP_PROP_POS_FRAMES, (self.section_start - 1))
+        self.nextFrame()
+        self.ReloadCurrentFrame()
+
     def saveObject(self):
         """Saves temporary point and rectangle data in the objects_to_track list"""
+
+        # get name from LineEdit or create one
         name = self.NameLNE.text()
         if name is None:
             name = f"obj-{len(self.objects_to_track)}"
@@ -1127,7 +1254,8 @@ class VideoWidget(QWidget):
         if self.rect_tmp is None:
             self.showWarningMessage("No region selected!")
             return
-        # save object
+
+        # Save object
         M = Motion(name, self.point_tmp, gui2tracker(self.rect_tmp))
         self.objects_to_track.append(M)
 
@@ -1152,8 +1280,6 @@ class VideoWidget(QWidget):
         # display in listwidget
         self.ObjectLWG.addItem(M.name)
 
-        self.settingsDialog.rotationSettings.p1CMB.addItem(M.name)
-        self.settingsDialog.rotationSettings.p2CMB.addItem(M.name)
         self.exportDialog.add_object(M.name)
 
         # reorganize widgets
@@ -1222,10 +1348,14 @@ class VideoWidget(QWidget):
         self.VideoSLD.setEnabled(True)
         self.ForwardBTN.setEnabled(True)
         self.BackwardBTN.setEnabled(True)
+
+        # reload frame
         self.ReloadCurrentFrame()
 
     def pickPointStart(self):
         """Waits for a signal generated by VidLBL with the coordinates"""
+
+        # check if video is opened, tracking section selected
         if (
             self.camera is None
             or self.section_start is None
@@ -1249,11 +1379,17 @@ class VideoWidget(QWidget):
             self.VidLBL.release.disconnect()
         except:
             pass
+
+        # disable region picking button
         self.PickRectangleBTN.setChecked(False)
+
+        # save selected point
         self.VidLBL.press.connect(lambda x, y: self.savePoint(x, y))
 
     def pickRectStart(self):
         """Waits for a signal generated by VidLBL with coordinates"""
+
+        # check if video is opened, tracking section selected
         if (
             self.camera is None
             or self.section_start is None
@@ -1264,7 +1400,7 @@ class VideoWidget(QWidget):
             )
             return
 
-            # disconnect all signals
+        # disconnect all signals
         try:
             self.VidLBL.moving.disconnect()
         except:
@@ -1278,9 +1414,10 @@ class VideoWidget(QWidget):
         except:
             pass
 
-        if self.PickPointBTN.isChecked():
-            self.PickPointBTN.setChecked(False)
+        # disable point selecting
+        self.PickPointBTN.setChecked(False)
 
+        # connect/disconnect signals
         if self.PickRectangleBTN.isChecked():
             self.VidLBL.moving.connect(lambda x, y: self.resizeRectangle(x, y))
             self.VidLBL.press.connect(lambda x, y: self.initRectangle(x, y))
@@ -1301,6 +1438,8 @@ class VideoWidget(QWidget):
 
     def initRectangle(self, x, y):
         """Initializes the rectangle when the mouse button is pressed"""
+
+        # check if video is opened, tracking section selected
         if (
             self.camera is None
             or self.section_start is None
@@ -1310,11 +1449,17 @@ class VideoWidget(QWidget):
                 "You must select the start and the end of the section to track!"
             )
             return
+
+        # retrieve coordinates
         x, y = self.relative_to_cv(x, y)
+
+        # store in temoporary variable
         self.rect_tmp = (x, y, x, y)
 
     def resizeRectangle(self, x, y):
         """Updates the rectangle when the mouse is moving"""
+
+        # check if video is opened, tracking section selected
         if (
             self.camera is None
             or self.section_start is None
@@ -1324,13 +1469,21 @@ class VideoWidget(QWidget):
                 "You must select the start and the end of the section to track!"
             )
             return
+
+        # retrieve coordinates
         x1, y1 = self.relative_to_cv(x, y)
         x0, y0, _, _ = self.rect_tmp
+
+        # update temporary variable
         self.rect_tmp = (x0, y0, x1, y1)
+
+        # reload frame
         self.ReloadCurrentFrame()
 
     def saveRectangle(self, x, y):
         """Saves drawn rectangle"""
+
+        # check if video is opened, tracking section selected
         if (
             self.camera is None
             or self.section_start is None
@@ -1340,32 +1493,51 @@ class VideoWidget(QWidget):
                 "You must select the start and the end of the section to track!"
             )
             return
+
+        # retrieve coordintes
         x1, y1 = self.relative_to_cv(x, y)
         x0, y0, _, _ = self.rect_tmp
         self.rect_tmp = (x0, y0, x1, y1)
+
+        # disable select button
         self.PickRectangleBTN.setChecked(False)
+
+        # jump to region selection
         self.pickRectStart()
+
+        # reload frame
         self.ReloadCurrentFrame()
 
     def savePoint(self, x, y):
         """Saves the coordinates recieved from VidLBL"""
+
+        # retrieve coordinates
         x, y = self.relative_to_cv(x, y)
         self.point_tmp = (x, y)
+
+        # reload frame
         self.ReloadCurrentFrame()
+
+        # disconnect signal and disable button
         self.VidLBL.press.disconnect()
         self.PickPointBTN.setChecked(False)
 
     def deleteObject(self, name):
         """Deletes the selected object from memory"""
+
+        # get the index of the object
         index = next(
             (i for i, item in enumerate(self.objects_to_track) if item.name == name), -1
         )
+
+        # delete from list
         del self.objects_to_track[index]
+
+        # delete from ListWidget
         i = self.ObjectLWG.takeItem(index)
         del i
 
-        self.settingsDialog.rotationSettings.p1CMB.removeItem(index)
-        self.settingsDialog.rotationSettings.p2CMB.removeItem(index)
+        # delete from export dialog
         self.exportDialog.delete_object(name)
 
         # check if tracking is still available
@@ -1375,21 +1547,24 @@ class VideoWidget(QWidget):
             or self.section_stop is None
         ):
             self.TrackBTN.setEnabled(False)
+
+        # reload frame
         self.ReloadCurrentFrame()
 
     def changeObjectDisplay(self, name):
         """Changes the visibility of the selected object"""
+
+        # get object
         obj = get_from_list_by_name(self.objects_to_track, name)
-        # index = next(
-        #    (i for i, item in enumerate(self.objects_to_track) if item.name == name), -1
-        # )
-        # self.objects_to_track[index].visible = not self.objects_to_track[index].visible
+
+        # change visibility
         if obj is not None:
             obj.visible = not obj.visible
             self.ReloadCurrentFrame()
 
     def setRuler(self):
         """Reorganises the GUI to make ruler control buttons visible connects mouse movement signals"""
+        # check if video is opened, tracking section selected
         if (
             self.camera is None
             or self.section_start is None
@@ -1399,8 +1574,12 @@ class VideoWidget(QWidget):
                 "You must select the start and the end of the section to track!"
             )
             return
+
+        # connect signals
         self.VidLBL.press.connect(lambda x, y: self.setRulerStart(x, y))
         self.VidLBL.moving.connect(lambda x, y: self.setRulerMove(x, y))
+
+        # reorganize layout
         self.setRulerBTN.setVisible(False)
         self.saveRulerBTN.setVisible(True)
         self.removeRulerBTN.setVisible(True)
@@ -1409,19 +1588,31 @@ class VideoWidget(QWidget):
 
     def setRulerStart(self, x, y):
         """Captures the starting point of the ruler"""
+
+        # check if video is opened, tracking section selected
         if (
             self.camera is None
             or self.section_start is None
             or self.section_stop is None
         ):
             return
+
+        # clear previous data
         self.ruler.clear()
+
+        # retrieve coordinates
         x0, y0 = self.relative_to_cv(x, y)
+
+        # set start point
         self.ruler.setP0(x0, y0)
+
+        # reload frame
         self.ReloadCurrentFrame()
 
     def setRulerMove(self, x, y):
         """Refreshes the endpoint of the ruler"""
+
+        # check if video is opened, tracking section selected
         if (
             self.camera is None
             or self.section_start is None
@@ -1431,24 +1622,44 @@ class VideoWidget(QWidget):
                 "You must select the start and the end of the section to track!"
             )
             return
+
+        # disable ready state
         self.ruler.rdy = False
+
+        # retrieve coordinates
         x1, y1 = self.relative_to_cv(x, y)
+
+        # set endpoint
         self.ruler.setP1(x1, y1)
+
+        # reload frame
         self.ReloadCurrentFrame()
 
     def saveRuler(self):
         """Saves the ruler drawn by the user"""
+
+        # read input value
         input = self.mmLNE.text()
+
+        # check if ruler is selected properly
         if not self.ruler.displayable() or input == "":
             return
+
+        # convert & calculate
         self.ruler.mm = float(input)
         self.ruler.calculate()
-        self.ReloadCurrentFrame()
+
+        # set ruler on export dialog
+        self.exportDialog.setRuler(self.ruler.rdy)
+
+        # reorganize layout
         self.saveRulerBTN.setVisible(False)
         self.changeRulerVisibilityBTN.setVisible(True)
         self.mmLNE.setVisible(False)
         self.mmLBL.setText(f"{self.ruler.mm_per_pix:.2f} mm/px")
         self.mmLBL.setAlignment(Qt.AlignCenter)
+
+        # disconnect signals
         try:
             self.VidLBL.press.disconnect()
         except:
@@ -1462,9 +1673,19 @@ class VideoWidget(QWidget):
         except:
             pass
 
+        # reload frame
+        self.ReloadCurrentFrame()
+
     def removeRuler(self):
         """Removes the ruler"""
+
+        # reset ruler
         self.ruler.reset()
+
+        # set ruler on export dialog
+        self.exportDialog.setRuler(self.ruler.rdy)
+
+        # reorganize layout
         self.setRulerBTN.setVisible(True)
         self.saveRulerBTN.setVisible(False)
         self.mmLBL.setVisible(False)
@@ -1473,6 +1694,8 @@ class VideoWidget(QWidget):
         self.mmLNE.setText("")
         self.removeRulerBTN.setVisible(False)
         self.changeRulerVisibilityBTN.setVisible(False)
+
+        # disconnect signals
         try:
             self.VidLBL.press.disconnect()
         except:
@@ -1485,6 +1708,8 @@ class VideoWidget(QWidget):
             self.VidLBL.release.disconnect()
         except:
             pass
+
+        # reaload frame
         self.ReloadCurrentFrame()
 
     def changeRulerVisibility(self):
@@ -1499,19 +1724,28 @@ class VideoWidget(QWidget):
 
     def setRoi(self):
         """Reorganises the GUI to make ruler control buttons visible connects mouse movement signals"""
+
+        # check if video is opened, tracking section selected
         if (
             self.camera is None
             or self.section_start is None
             or self.section_stop is None
         ):
             return
+
+        # connect signals
         self.VidLBL.press.connect(lambda x, y: self.setRoiStart(x, y))
         self.VidLBL.moving.connect(lambda x, y: self.setRoiMove(x, y))
+
+        # reorganize layouts
         self.setRoiBTN.setVisible(False)
         self.saveRoiBTN.setVisible(True)
         self.delRoiBTN.setVisible(True)
 
     def setRoiStart(self, x, y):
+        """Select the starting point of the Range Of Interest rectangle"""
+
+        # check if video is opened, tracking section selected
         if (
             self.camera is None
             or self.section_start is None
@@ -1521,12 +1755,18 @@ class VideoWidget(QWidget):
                 "You must select the start and the end of the section to track!"
             )
             return
+
+        # retrieve and store
         x1, y1 = self.relative_to_cv(x, y)
         self.roi_rect = (x1, y1, x1, y1)
+
+        # reload frame
         self.ReloadCurrentFrame()
 
     def setRoiMove(self, x, y):
-        """Refreshes the endpoint of the ruler"""
+        """Refreshes the endpoint of the Range Of Interest rectangle"""
+
+        # check if video is opened, tracking section selected
         if (
             self.camera is None
             or self.section_start is None
@@ -1536,17 +1776,26 @@ class VideoWidget(QWidget):
                 "You must select the start and the end of the section to track!"
             )
             return
+
+        # retrieve and store
         x1, y1 = self.relative_to_cv(x, y)
         self.roi_rect = (self.roi_rect[0], self.roi_rect[1], x1, y1)
 
+        # rload frame
         self.ReloadCurrentFrame()
 
     def delRoi(self):
-        """Removes the ruler"""
+        """Removes the Range Of Interest rectangle"""
+
+        # reset temporary data
         self.roi_rect = None
+
+        # reorganize layout
         self.setRoiBTN.setVisible(True)
         self.saveRoiBTN.setVisible(False)
         self.delRoiBTN.setVisible(False)
+
+        # disconnect signals
         try:
             self.VidLBL.press.disconnect()
         except:
@@ -1559,12 +1808,17 @@ class VideoWidget(QWidget):
             self.VidLBL.release.disconnect()
         except:
             pass
+
+        # reload frame
         self.ReloadCurrentFrame()
 
     def saveRoi(self):
         """Saves the roi drawn by the user"""
-        self.ReloadCurrentFrame()
+
+        # hide button
         self.saveRoiBTN.setVisible(False)
+
+        # disconnect signals
         try:
             self.VidLBL.press.disconnect()
         except:
@@ -1578,73 +1832,37 @@ class VideoWidget(QWidget):
         except:
             pass
 
+        # reload frame
+        self.ReloadCurrentFrame()
+
     def showTrackingSettings(self):
         """Displays the dialog with the tracking settings"""
-        if self.settingsDialog.exec_():
-            # TRACKER_TYPE
-            tracker_type = self.settingsDialog.tracker_type()
 
-            # SIZE-CHANGE
+        # show tracking dialog
+        if self.settingsDialog.exec_():
+
+            # get tracker type
+            tracker_type = self.settingsDialog.algoCMB.currentText()
+
+            # get size change
             if self.settingsDialog.sizeCHB.isChecked():
                 size = True
             else:
                 size = False
 
-            # FPS
-            if self.settingsDialog.fps() != "":
-                fps = int(self.settingsDialog.fps())
+            # get FPS
+            if self.settingsDialog.fpsLNE.text() != "":
+                fps = int(self.settingsDialog.fpsLNE.text())
             else:
                 fps = self.fps
 
-            # FILTER
-            filter = self.settingsDialog.filterCMB.currentText()
-            if filter == "None":
-                filter_settings = {"filter": "None"}
-            elif filter == "Gaussian":
-                filter_settings = {
-                    "filter": "Gaussian",
-                    "window": int(self.settingsDialog.filterSettings.gwindowLNE.text()),
-                    "sigma": int(self.settingsDialog.filterSettings.gsigmaLNE.text()),
-                }
-            elif filter == "Savitzky-Golay":
-                filter_settings = {
-                    "filter": "SG",
-                    "window": int(
-                        self.settingsDialog.filterSettings.sgwindowLNE.text()
-                    ),
-                    "pol": int(self.settingsDialog.filterSettings.sgpolLNE.text()),
-                }
-            elif filter == "Moving AVG":
-                filter_settings = {
-                    "filter": "Moving AVG",
-                    "window": int(self.settingsDialog.filterSettings.mwindowLNE.text()),
-                }
-            else:
-                filter_settings = None
-
-            # DERIVATIVE
-            derivative = self.settingsDialog.derivativeCMB.currentText()
-            if derivative == "LOESS-coefficients":
-                derivative_settings = {
-                    "derivative": "SG",
-                    "window": int(
-                        self.settingsDialog.derivativeSettings.sgwindowLNE.text()
-                    ),
-                    "pol": int(self.settingsDialog.derivativeSettings.sgpolLNE.text()),
-                }
-            else:
-                derivative_settings = {
-                    "derivative": "FINDIFF",
-                    "acc": int(self.settingsDialog.derivativeSettings.apprLNE.text()),
-                }
-
             # running the tracker
-            self.runTracker(
-                tracker_type, size, fps, filter_settings, derivative_settings
-            )
+            self.runTracker(tracker_type, size, fps)
 
     def eventFilter(self, source, event):
         """Enables users to change X and Y offsets with the W-A-S-D butttons"""
+
+        # chenge offset
         if event.type() == QEvent.KeyPress:
             key = event.key()
             if key == Qt.Key_W:
@@ -1655,18 +1873,27 @@ class VideoWidget(QWidget):
                 self.changeYoffset(5)
             elif key == Qt.Key_D:
                 self.changeXoffset(5)
+
+        # call parent function
         return super(VideoWidget, self).eventFilter(source, event)
 
     def pix2mm(self, data):
+        """Converts distance measured in pixels to m if the Ruler is set"""
         if self.ruler.mm_per_pix is not None:
             return data * self.ruler.mm_per_pix
 
     def pix2m(self, data):
+        """Converts distance measured in pixels to m if the Ruler is set"""
         if self.ruler.mm_per_pix is not None:
             return data * self.ruler.mm_per_pix / 1000
 
-    def runTracker(self, tracker_type, size, fps, filter_settings, derivative_settings):
+    def runTracker(self, tracker_type, size, fps):
         """Runs the seleted tracking algorithm with the help of a QThread"""
+
+        # resets the state in case of error
+        self.mode = False
+
+        # create tracking thread
         self.tracker = TrackingThread(
             self.objects_to_track,
             self.camera,
@@ -1675,11 +1902,11 @@ class VideoWidget(QWidget):
             tracker_type,
             size,
             fps,
-            filter_settings,
-            derivative_settings,
             self.timestamp,
             self.roi_rect,
         )
+
+        # connect signals ans start tracker
         self.tracker.progressChanged.connect(self.progressDialog.updateBar)
         self.tracker.newObject.connect(self.progressDialog.updateName)
         self.tracker.success.connect(self.trackingSucceeded)
@@ -1691,6 +1918,7 @@ class VideoWidget(QWidget):
         self.tracker.finished.connect(self.progressDialog.accept)
 
     def showErrorMessage(self, message):
+        """Shows the given error message in a new dialog"""
         msg = QMessageBox()
         with open("style/message.qss", "r") as style:
             msg.setStyleSheet(style.read())
@@ -1701,6 +1929,7 @@ class VideoWidget(QWidget):
         msg.exec_()
 
     def showWarningMessage(self, message):
+        """Shows the given warning message in a new dialog"""
         msg = QMessageBox()
         with open("style/message.qss", "r") as style:
             msg.setStyleSheet(style.read())
@@ -1711,23 +1940,46 @@ class VideoWidget(QWidget):
         msg.exec_()
 
     def trackingSucceeded(self):
+        """After successful tracking change layout and functionality, open post-processing"""
+        # cahnge mode
         self.mode = True
-        self.PropGB.setEnabled(False)
+
+        # reorganize layout
         self.TrackingSectionGB.setEnabled(False)
         self.ObjectsGB.setEnabled(False)
-        self.ZoomControlGB.setEnabled(False)
-        # self.RulerGB.setEnabled(False)
-        self.exportBTN.setEnabled(True)
         self.exportVidBTN.setEnabled(True)
         self.resetAllBTN.setEnabled(True)
         if len(self.objects_to_track) >= 2:
             self.rotGB.setEnabled(True)
         self.playbackGB.setEnabled(True)
         self.roiGB.setEnabled(False)
-        # print(f"timestamp:{len(self.timestamp)}")
+
+        # open post-processing settings
+        if self.postProcessDialog.exec_():
+            self.PostProcesser = PostProcesserThread(
+                True,
+                self.objects_to_track,
+                self.timestamp[1] - self.timestamp[0],
+                self.postProcessDialog.parameters,
+            )
+            self.PostProcesser.success.connect(self.calculationFinished)
+            self.progressDialog.updateName("Calculation in progress...")
+            self.progressDialog.updateBar(0)
+            self.PostProcesser.progressChanged.connect(self.progressDialog.updateBar)
+            self.PostProcesser.error_occured.connect(self.showErrorMessage)
+            self.progressDialog.rejected.connect(self.PostProcesser.cancel)
+            self.PostProcesser.finished.connect(self.progressDialog.accept)
+            self.PostProcesser.start()
+            self.progressDialog.show()
+
+    def calculationFinished(self):
+        """Helper function that's called if calculation ran successfully"""
+        self.exportBTN.setEnabled(True)
 
     def resetAll(self):
-        # layout reorganization
+        """Reset all data"""
+
+        # reorganize layout and change mode
         self.mode = False
         self.PropGB.setEnabled(True)
         self.TrackingSectionGB.setEnabled(True)
@@ -1746,92 +1998,104 @@ class VideoWidget(QWidget):
         self.setresetStart()
         self.setresetStop()
 
+        # reset stored info
         self.objects_to_track = []
         self.rotations = []
         self.timestamp = []
 
+        # clear temp data
         self.point_tmp = None
         self.rect_tmp = None  # x0, y0, x1, y1
+        self.roi_rect = None
 
+        # remove ruer cancel current object
         self.removeRuler()
         self.cancelObject()
 
-        self.roi_rect = None
-
+        # clear objects
         self.ObjectLWG.clear()
         self.rotLWG.clear()
-        self.settingsDialog.rotationSettings.p1CMB.clear()
-        self.settingsDialog.rotationSettings.p2CMB.clear()
         self.exportDialog.delete_object("ALL")
         self.exportDialog.delete_rotation("ALL")
 
+        # reload frame
         self.ReloadCurrentFrame()
 
     def saveRotation(self, rotation):
+        """Helper function that saves rotation object"""
         self.rotations.append(rotation)
-        # reorganize the wideo widget
+
 
     def addRotation(self):
+        """Add rotation object"""
+
+        # check if there are 2 existing ibjects
         if len(self.objects_to_track) < 2:
             return
+
+        # open settings dialog
         settings = RotationSettings()
         settings.set_params(self.objects_to_track)
         if settings.exec_():
             P1_name = settings.p1CMB.currentText()
             P2_name = settings.p2CMB.currentText()
             P1 = get_from_list_by_name(self.objects_to_track, P1_name)
-            # p1_index = next(
-            #    (
-            #        i
-            #        for i, item in enumerate(self.objects_to_track)
-            #        if item.name == P1_name
-            #    ),
-            #    -1,
-            # )
             P2 = get_from_list_by_name(self.objects_to_track, P2_name)
-            # p2_index = next(
-            #    (
-            #        i
-            #        for i, item in enumerate(self.objects_to_track)
-            #        if item.name == P2_name
-            #    ),
-            #    -1,
-            # )
             if P1 is not None and P2 is not None:
+                # create rotation and run post-processing
                 R = Rotation(P1, P2)
                 R.calculate()
-                self.rotLWG.addItem(str(R))
-                self.rotations.append(R)
-                self.exportDialog.add_rotation(str(R))
-            # if p1_index != -1 and p2_index != -1:
-            #    P1 = self.objects_to_track[p1_index]
-            #    P2 = self.objects_to_track[p2_index]
-            #    R = Rotation(P1, P2)
-            #    R.calculate()
-            #    self.rotLWG.addItem(str(R))
-            #    self.rotations.append(R)
-            #    self.exportDialog.add_rotation(str(R))
-
+                if self.postProcessDialog.exec_():
+                    self.PostProcesser = PostProcesserThread(
+                        False,
+                        R,
+                        self.timestamp[1] - self.timestamp[0],
+                        self.postProcessDialog.parameters,
+                    )
+                    self.PostProcesser.success.connect(self.calculationFinished)
+                    self.progressDialog.updateName("Calculation in progress...")
+                    self.progressDialog.updateBar(0)
+                    self.PostProcesser.progressChanged.connect(
+                        self.progressDialog.updateBar
+                    )
+                    self.PostProcesser.error_occured.connect(self.showErrorMessage)
+                    self.progressDialog.rejected.connect(self.PostProcesser.cancel)
+                    self.PostProcesser.finished.connect(self.progressDialog.accept)
+                    self.PostProcesser.start()
+                    self.progressDialog.show()
+                    self.rotLWG.addItem(str(R))
+                    self.rotations.append(R)
+                    self.exportDialog.add_rotation(str(R))
+        
+        # delete setting dialog
         settings.deleteLater()
 
     def showExportDialog(self):
+        """Show the export dialog"""
         self.exportDialog.setRuler(self.ruler.rdy)
-        if self.exportDialog.exec_(self.settingsDialog.sizeCHB.isChecked()):
-            parameters = self.exportDialog.parameters
-            # print(parameters)
-            self.getPlotData(parameters)
+        self.exportDialog.show(
+            self.settingsDialog.sizeCHB.isChecked(),
+            all(x.can_plot() for x in self.objects_to_track),
+            all(x.can_plot() for x in self.rotations),
+        )
 
     def getPlotData(self, parameters):
-        # print(parameters)
-        # create the numpy aray for the data
+        """Get data collected by the Export dialog and creates the plot or file"""
+
+        # chack mode
         if not self.mode:
             return
 
+        # variables for export
         exp_ok = False
         data = None
+
+        # movement
         if parameters["mode"] == "MOV" and len(parameters["objects"]):
             if parameters["ax"] == "BOTH":
-                data = np.zeros((len(self.timestamp), len(parameters["objects"]) + 2))
+                data = np.zeros(
+                    (len(self.timestamp), 2 * len(parameters["objects"]) + 1)
+                )
             else:
                 data = np.zeros((len(self.timestamp), len(parameters["objects"]) + 1))
             cols = []
@@ -1852,7 +2116,6 @@ class VideoWidget(QWidget):
 
                     # axis
                     if parameters["ax"] == "XT":
-                        # print(f"data{data.shape}; position: {obj.position.shape}")
                         data[:, i + 1] = obj.position[:, 0]
                         cols.append(obj.name + " - X")
                         exp_ok = True
@@ -1911,13 +2174,11 @@ class VideoWidget(QWidget):
             elif parameters["unit"] == "m":
                 data = pix2m(data, self.ruler.mm_per_pix)
 
+        # rotation
         elif parameters["mode"] == "ROT":
             data = np.zeros((len(self.timestamp), len(parameters["rotations"]) + 1,))
-            # print(data)
-            # print(f"data: {(data.shape)}")
             cols = []
             data[:, 0] = np.asarray(self.timestamp)
-            # print(f"timestamp: {self.timestamp}")
             cols.append("Time (s)")
 
             for i in range(len(parameters["rotations"])):
@@ -1928,29 +2189,28 @@ class VideoWidget(QWidget):
                     return
 
                 if parameters["prop"] == "POS":
-                    # print(f"rotation: {rot.rotation.shape}")
                     data[:, i + 1] = rot.rotation
                     cols.append(rot.P1.name + " + " + rot.P2.name + " rotation")
                     title = "Rotation"
                     exp_ok = True
                 elif parameters["prop"] == "VEL":
-                    # print(f"rotation: {rot.rotation.shape}")
-                    data[:, i + 1] = rot.rotation
+                    data[:, i + 1] = rot.ang_velocity
                     cols.append(rot.P1.name + " + " + rot.P2.name + " angular velocity")
                     title = "Angular velocity"
                     exp_ok = True
 
                 elif parameters["prop"] == "ACC":
-                    data[:, i + 1] = rot.rotation
+                    data[:, i + 1] = rot.ang_acceleration
                     cols.append(
                         rot.P1.name + " + " + rot.P2.name + " angular acceleration"
                     )
                     title = "Angular acceleration"
                     exp_ok = True
 
-            if parameters["unit"] == "deg":
-                data = rad2deg_(data, self.ruler.mm_per_pix)
+            if parameters["unit"] == "DEG":
+                data = rad2deg_(data)
 
+        # size change
         elif parameters["mode"] == "SIZ":
             data = np.zeros((len(self.timestamp), len(parameters["objects"]) + 1,))
             cols = []
@@ -1969,18 +2229,26 @@ class VideoWidget(QWidget):
                 title = "Size change"
                 exp_ok = True
 
+        # chack if data collection was successfull
         if data is None or not exp_ok:
             return
-        df = pd.DataFrame(data, columns=cols)
+
+        # plot data
         if parameters["out"] == "PLOT":
+            df = pd.DataFrame(data, columns=cols)
             self.plotter = PlotDialog(df, title, get_unit(parameters))
             self.plotter.show()
+
+        # export data
         elif parameters["out"] == "EXP":
+            unit = get_unit_readable(parameters)
+            cols = [f"{item} ({unit})" for item in cols]
+            df = pd.DataFrame(data, columns=cols)
             save_name = QFileDialog.getSaveFileName(
                 self,
                 "Save data",
                 "/",
-                "Text file (*.txt);;CSV file (*.csv);;Excel file (*.xlsx)",
+                "CSV file (*.csv);;Text file (*.txt);;Excel file (*.xlsx)",
             )
             if save_name[0] != "":
                 if save_name[1] == "Excel file (*.xlsx)":
@@ -1989,10 +2257,16 @@ class VideoWidget(QWidget):
                     df.to_csv(save_name[0])
 
     def exportVideo(self):
+        """Exports the video with the tracked objects in MP! format"""
+
+        # get filename
         save_name = QFileDialog.getSaveFileName(
             self, "Export Video", "/", "MP4 file (*.mp4)",
         )
+
+        # save video file
         if save_name[0] != "":
+            # create thread, connect signals
             self.exporter = ExportingThread(
                 self.camera,
                 self.objects_to_track,
@@ -2004,7 +2278,7 @@ class VideoWidget(QWidget):
                 self.pointCHB.isChecked(),
                 round(self.playbackSLD.value() * self.num_of_frames / 100),
             )
-            self.progressDialog.updateName("Expoting video to " + save_name[0])
+            self.progressDialog.updateName("Exporting video to " + save_name[0])
             self.progressDialog.rejected.connect(self.exporter.cancel)
             self.exporter.progressChanged.connect(self.progressDialog.updateBar)
             self.exporter.finished.connect(self.progressDialog.accept)
@@ -2014,6 +2288,18 @@ class VideoWidget(QWidget):
 
 # run the application
 if __name__ == "__main__":
+    # create app
     App = QApplication(sys.argv)
+
+    # splash screen for loading
+    splash = QSplashScreen(QPixmap("images/logo.svg"))
+    splash.show()
+    App.processEvents()
+    
+    # open application
     root = VideoWidget()
+    root.show()
+
+    # close splash
+    splash.finish(root)
     sys.exit(App.exec())

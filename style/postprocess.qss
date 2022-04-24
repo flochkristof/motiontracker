@@ -1,4 +1,4 @@
-#tracker_window {
+#postprocess_window {
     background-color: #797979;
     color: #ffffff;
 }
@@ -8,7 +8,12 @@
     color: #ffffff
 }
 
-.QLabel#zoomnotificationLBL {
+.QLabel::disabled {
+    color: #e6e6e6
+}
+
+
+.QLabel#noInputLBL {
     font-weight: bold;
 }
 
@@ -38,6 +43,12 @@
 .QLineEdit {
     background-color: #cecece;
     border-radius: 5px;
+    max-width: 100px;
+    width: 100px;
+}
+
+.QLineEdit:disabled {
+    background-color: #a6a6a6
 }
 
 .QGroupBox {
@@ -47,6 +58,7 @@
 
 .QRadioButton {
     color: white;
+    font-weight: bold;
 }
 
 
@@ -54,7 +66,7 @@
     border: 1px solid gray;
     border-radius: 3px;
     padding: 1px 18px 1px 3px;
-    min-width: 6em;
+    max-width: 85px;
 }
 
 .QComboBox:editable {
@@ -101,27 +113,15 @@
 }
 
 .QComboBox#diffFamilyCMB {
-    width: 380px;
+    max-width: 400px;
+    width: 400px;
 }
 
 .QComboBox#diffSpecCMB {
-    width: 380px;
+    max-width: 400px;
+    width: 400px;
 }
 
 .QCheckBox {
     color: #ffffff;
 }
-
-.QCheckBox::indicator
-{
-    border : 2px solid white;
-    width : 18px;
-    height : 18px;
-    border-radius : 3px;
-    background-color: #919191;
-}
-
-.QCheckBox::indicator:checked {
-    image: url("images/tick.png")
-}
-

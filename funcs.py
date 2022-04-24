@@ -5,9 +5,12 @@ from scipy.ndimage import gaussian_filter1d
 from scipy.signal import savgol_filter
 import cv2
 from findiff import FinDiff
+import pynumdiff
+import pynumdiff.optimize
 
 
 def get_from_list_by_name(list, name):
+    """Get object from list by name"""
     index = next((i for i, item in enumerate(list) if str(item) == name), -1,)
     if index != -1:
         return list[index]
@@ -73,7 +76,6 @@ def display_objects(
                             x1, y1 = obj.point_path[
                                 int(pos - section_start + i - trajectory_length + 1)
                             ]
-                            # print(f"x:{x0}   y:{y0}   x:{x1}   y:{y1}")
                             frame = cv2.line(
                                 frame,
                                 (int(x0), int(y0)),
@@ -86,7 +88,6 @@ def display_objects(
                     x0, y0, x1, y1 = tracker2gui(
                         obj.rectangle_path[int(pos - section_start + 1)]
                     )
-                    # print(f"{x0} {y0} {x1} {y1}")
                     frame = cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 0, 0), 2)
                     cv2.putText(
                         frame,
@@ -103,6 +104,7 @@ def display_objects(
 
 def get_unit(parameters):
     """Returns the corresponding axis labels for the matplotlib plots"""
+
     if parameters["mode"] == "SIZ":
         return "Size change (%)"
     elif parameters["mode"] == "MOV":
@@ -144,8 +146,53 @@ def get_unit(parameters):
                 return r"Angular acceleration $\mathregular{(\frac{rad}{s^{2}})}$"
 
 
+def get_unit_readable(parameters):
+    """Returns the corresponding axis labels for the matplotlib plots"""
+
+    if parameters["mode"] == "SIZ":
+        return "Size change (%)"
+    elif parameters["mode"] == "MOV":
+        if parameters["unit"] == "m":
+            if parameters["prop"] == "POS":
+                return "m"
+            elif parameters["prop"] == "VEL":
+                return "m/s"
+            elif parameters["prop"] == "ACC":
+                return "m/s^2"
+        elif parameters["unit"] == "mm":
+            if parameters["prop"] == "POS":
+                return "mm"
+            elif parameters["prop"] == "VEL":
+                return "mm/s"
+            elif parameters["prop"] == "ACC":
+                return "mm/s^2"
+        elif parameters["unit"] == "pix":
+            if parameters["prop"] == "POS":
+                return "pix"
+            elif parameters["prop"] == "VEL":
+                return "pix/s"
+            elif parameters["prop"] == "ACC":
+                return "pix/s^2"
+    elif parameters["mode"] == "ROT":
+        if parameters["unit"] == "DEG":
+            if parameters["prop"] == "POS":
+                return "deg"
+            elif parameters["prop"] == "VEL":
+                return "deg/s"
+            elif parameters["prop"] == "ACC":
+                return "deg/s^2"
+        elif parameters["unit"] == "RAD":
+            if parameters["prop"] == "POS":
+                return "rad"
+            elif parameters["prop"] == "VEL":
+                return "rad/s"
+            elif parameters["prop"] == "ACC":
+                return "rad/s^2"
+
+
 def rad2deg_(data):
     """Converts the data in the array from radian to edgrees"""
+
     if data.shape[1] > 1:
         data[:, [1, data.shape[1] - 1]] = 180 / np.pi * data[:, [1, data.shape[1] - 1]]
     else:
@@ -155,6 +202,7 @@ def rad2deg_(data):
 
 def pix2mm(data, pix_per_mm):
     """Using the ruler it coverts the data to mm"""
+
     if pix_per_mm is not None:
         if data.shape[1] > 1:
             data[:, [1, data.shape[1] - 1]] = (
@@ -169,6 +217,7 @@ def pix2mm(data, pix_per_mm):
 
 def pix2m(data, pix_per_mm):
     """Using the ruler it coverts the data to m"""
+
     if pix_per_mm is not None:
         if data.shape[1] > 1:
             data[:, [1, data.shape[1] - 1]] = (
@@ -183,6 +232,7 @@ def pix2m(data, pix_per_mm):
 
 def list2np(data):
     """Converts the list of coordinates to np.array"""
+
     x = np.asarray([p[0] for p in data])
     y = np.asarray([p[1] for p in data])
     result = np.zeros((len(x), 2))
@@ -210,110 +260,6 @@ def gaussian(data, window, sigma):
     return result
 
 
-def moving_avg(data, w_len):
-    """Mooving average filter"""
-    window = np.ones(w_len) / w_len
-    x = np.asarray([p[0] for p in data])
-    y = np.asarray([p[1] for p in data])
-    x = np.convolve(x, window, mode="valid")
-    y = np.convolve(y, window, mode="valid")
-    result = np.zeros((len(x), 2))
-    result[:, 0] = x
-    result[:, 1] = y
-    return result
-
-
-def savgol(data, window, pol):
-    """Savitzky-Golay filter"""
-    # print("func called")
-    x = np.asarray([p[0] for p in data])
-    # print(x)
-    y = np.asarray([p[1] for p in data])
-    xs = savgol_filter(x, window, pol)
-    # print(xs)
-    ys = savgol_filter(y, window, pol)
-    result = np.zeros((len(x), 2))
-    result[:, 0] = xs
-    result[:, 1] = ys
-    # print(result)
-    return result
-
-
-def savgol_diff(data, window, pol, order, fps=1):
-    """Numerikus deriválás Savitzky-Golay filterrel"""
-    if window % 2 == 0:
-        window += 1
-    # print(data)
-    x = data[:, 0]
-    y = data[:, 1]
-    # print(x)
-    dx = savgol_filter(x, window, pol, deriv=order) * (fps) ** order
-    # print(dx)
-    dy = savgol_filter(y, window, pol, deriv=order) * (fps) ** order
-    result = np.zeros((len(x), 2))
-
-    result[:, 0] = dx
-    result[:, 1] = dy
-    return result
-
-
-def fin_diff(data, accuracy, order, fps):
-    if accuracy % 2:
-        accuracy += 1
-
-    diff = FinDiff(0, 1 / fps, order, acc=accuracy)
-    x = data[:, 0]
-    y = data[:, 1]
-    result = np.zeros((len(x), 2))
-    result[:, 0] = diff(x)
-    result[:, 1] = diff(y)
-    return result
-
-
-"""def derivative_FinDiff(self, data, accuracy, order, time_scale):
-'''Véges differencia módszerrel való deriválás tetszőleges renddel'''
-step = 1/(self.fps*time_scale)
-d_dt = FinDiff(0, step, order, acc=accuracy)
-if isinstance(data[0], float) or isinstance(data[0], int):
-    return d_dt(data)
-elif len(data[0]) == 2 or isinstance(data[0], (list, tuple)):
-    result = np.array(data)
-    x = result[:,0]
-    y = result[:,1]
-    result[:,0], result[:,1] = d_dt(x), d_dt(y)
-    return result"""
-
-
-"""
-
-    def derivate_SG(self, data, window, poly_n, order, time_scale):
-        '''Savitzky-Golay filterrel való numerikus deriválás'''
-        if isinstance(data[0], float) or isinstance(data[0], int):
-            return signal.savgol_filter(data, window, poly_n, deriv=order)*(self.fps*time_scale)**order
-
-        elif len(data[0]) == 2 or isinstance(data[0], (list, tuple)):
-            result = np.array(data)
-            x = result[:,0]
-            y = result[:,1]
-            dx_dt = signal.savgol_filter(x, window, poly_n, deriv=order)*(self.fps*time_scale)**order
-            dy_dt = signal.savgol_filter(y, window, poly_n, deriv=order)*(self.fps*time_scale)**order
-            result[:,0], result[:,1] = dx_dt, dy_dt
-            return result
-def derivative_FinDiff(self, data, accuracy, order, time_scale):
-        '''Véges differencia módszerrel való deriválás tetszőleges renddel'''
-    step = 1/(self.fps*time_scale)
-    d_dt = FinDiff(0, step, order, acc=accuracy)
-    if isinstance(data[0], float) or isinstance(data[0], int):
-            return d_dt(data)
-    elif len(data[0]) == 2 or isinstance(data[0], (list, tuple)):
-            result = np.array(data)
-        x = result[:,0]
-        y = result[:,1]
-        result[:,0], result[:,1] = d_dt(x), d_dt(y)
-        return result
-"""
-
-
 def crop_frame(frame, x_offset, y_offset, zoom):
     """Crops the frame according to offset and zoom parameters"""
 
@@ -326,12 +272,12 @@ def crop_frame(frame, x_offset, y_offset, zoom):
 
 
 def crop_roi(frame, rect):
-    return frame[
-        rect[1] : rect[3], rect[0] : rect[2]
-    ]  # TODO tracking alatt hozzáadni az eredményekhez a cuccot
+    """Crop frame with the ROI rectangle"""
+    return frame[rect[1] : rect[3], rect[0] : rect[2]]
 
 
 def rect2cropped(rectangle, roi_rect):
+    """Convert rectangle data to cropped coordinates"""
     x, y, w, h = rectangle
     return (x - roi_rect[0], y - roi_rect[1], w, h)
 
@@ -377,3 +323,602 @@ def draw_grid(x_num, y_num, frame, color_name):
             frame, (0, y), (frame.shape[1], y), color=color, thickness=1,
         )
     return frame
+
+
+def differentiate(p, dt, parameters):
+    """
+    Calculates the velocity and the acceleration based on the given position data using the selected algortithm
+    
+    :param p: (np.array of floats, 1xN) time series to differentiate
+    :param dt: (float) time step
+    :param parameters: (dict) parameters for the differentiation 
+    :return: ret : returns True if the differentiation was successful
+    :return: ps : smoothed position
+    :return: v : calculated velocity
+    :return: a : calculated acceleration
+    """
+
+    if parameters[1] == "First Order Finite Difference":
+        try:
+            ps, v = pynumdiff.finite_difference.first_order(p, dt)
+            v, a = pynumdiff.finite_difference.first_order(v, dt)
+            return True, ps, v, a
+        except:
+            return False, 0, 0, 0
+
+    elif parameters[1] == "Second Order Finite Difference":
+        try:
+            ps, v = pynumdiff.finite_difference.second_order(p, dt)
+            v, a = pynumdiff.finite_difference.second_order(v, dt)
+            return True, ps, v, a
+        except:
+            return False, 0, 0, 0
+
+    elif parameters[1] == "Iterated First Order Finite Difference":
+        try:
+            ps, v = pynumdiff.finite_difference.first_order(
+                p, dt, parameters[2], parameters[3]
+            )
+            v, a = pynumdiff.finite_difference.first_order(
+                v, dt, parameters[2], parameters[3]
+            )
+            return True, ps, v, a
+        except:
+            return False, 0, 0, 0
+    elif parameters[1] == "Finite Difference with Median Smoothing":
+        try:
+            ps, v = pynumdiff.smooth_finite_difference.mediandiff(
+                p, dt, parameters[2], parameters[3]
+            )
+            v, a = pynumdiff.smooth_finite_difference.mediandiff(
+                v, dt, parameters[2], parameters[3]
+            )
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif parameters[1] == "Finite Difference with Mean Smoothing":
+        try:
+            ps, v = pynumdiff.smooth_finite_difference.meandiff(
+                p, dt, parameters[2], parameters[3]
+            )
+            v, a = pynumdiff.smooth_finite_difference.meandiff(
+                v, dt, parameters[2], parameters[3]
+            )
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif parameters[1] == "Finite Difference with Gaussian Smoothing":
+        try:
+            ps, v = pynumdiff.smooth_finite_difference.gaussiandiff(
+                p, dt, parameters[2], parameters[3]
+            )
+            v, a = pynumdiff.smooth_finite_difference.gaussiandiff(
+                v, dt, parameters[2], parameters[3]
+            )
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif parameters[1] == "Finite Difference with Butterworth Smoothing":
+        try:
+            ps, v = pynumdiff.smooth_finite_difference.butterdiff(
+                p, dt, parameters[2], parameters[3]
+            )
+            v, a = pynumdiff.smooth_finite_difference.butterdiff(
+                v, dt, parameters[2], parameters[3]
+            )
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif parameters[1] == "Finite Difference with Friedrichs Smoothing":
+        try:
+            ps, v = pynumdiff.smooth_finite_difference.friedrichsdiff(
+                p, dt, parameters[2], parameters[3]
+            )
+            v, a = pynumdiff.smooth_finite_difference.friedrichsdiff(
+                v, dt, parameters[2], parameters[3]
+            )
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif parameters[1] == "Finite Difference with Spline Smoothing":
+        try:
+            ps, v = pynumdiff.smooth_finite_difference.splinediff(
+                p, dt, parameters[2], parameters[3]
+            )
+            v, a = pynumdiff.smooth_finite_difference.splinediff(
+                v, dt, parameters[2], parameters[3]
+            )
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif (
+        parameters[1]
+        == "Iterative Total Variation Regularization with Regularized Velocity"
+    ):
+        try:
+            parameters[3]["cg_maxiter"] = len(p)
+            parameters[3]["scale"] = "small" if len(p) < 1000 else "large"
+            ps, v = pynumdiff.total_variation_regularization.iterative_velocity(
+                p, dt, parameters[2], parameters[3]
+            )
+            v, a = pynumdiff.total_variation_regularization.iterative_velocity(
+                v, dt, parameters[2], parameters[3]
+            )
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif (
+        parameters[1]
+        == "Convex Total Variation Regularization with Regularized Velocity"
+    ):
+        try:
+            (
+                ps,
+                v,
+            ) = pynumdiff.total_variation_regularization._total_variation_regularization.velocity(
+                p, dt, parameters[2], parameters[3]
+            )
+            (
+                v,
+                a,
+            ) = pynumdiff.total_variation_regularization._total_variation_regularization.velocity(
+                v, dt, parameters[2], parameters[3]
+            )
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif (
+        parameters[1]
+        == "Convex Total Variation Regularization with Regularized Acceleration"
+    ):
+        try:
+            (
+                ps,
+                v,
+            ) = pynumdiff.total_variation_regularization._total_variation_regularization.acceleration(
+                p, dt, parameters[2], parameters[3]
+            )
+            (
+                v,
+                a,
+            ) = pynumdiff.total_variation_regularization._total_variation_regularization.acceleration(
+                v, dt, parameters[2], parameters[3]
+            )
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif parameters[1] == "Convex Total Variation Regularization with Regularized Jerk":
+        try:
+            (
+                ps,
+                v,
+            ) = pynumdiff.total_variation_regularization._total_variation_regularization.jerk(
+                p, dt, parameters[2], parameters[3]
+            )
+            (
+                v,
+                a,
+            ) = pynumdiff.total_variation_regularization._total_variation_regularization.jerk(
+                v, dt, parameters[2], parameters[3]
+            )
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif parameters[1] == "Convex Total Variation Regularization with Sliding Jerk":
+        try:
+            (
+                ps,
+                v,
+            ) = pynumdiff.total_variation_regularization._total_variation_regularization.sliding_jerk(
+                p, dt, parameters[2], parameters[3]
+            )
+            (
+                v,
+                a,
+            ) = pynumdiff.total_variation_regularization._total_variation_regularization.sliding_jerk(
+                v, dt, parameters[2], parameters[3]
+            )
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif (
+        parameters[1]
+        == "Convex Total Variation Regularization with Smoothed Acceleration"
+    ):
+        try:
+            (
+                ps,
+                v,
+            ) = pynumdiff.total_variation_regularization._total_variation_regularization.smooth_acceleration(
+                p, dt, parameters[2], parameters[3]
+            )
+            (
+                v,
+                a,
+            ) = pynumdiff.total_variation_regularization._total_variation_regularization.smooth_acceleration(
+                v, dt, parameters[2], parameters[3]
+            )
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif parameters[1] == "Spectral Derivative":
+        try:
+            ps, v = pynumdiff.linear_model._linear_model.spectraldiff(
+                p, dt, parameters[2], parameters[3]
+            )
+            v, a = pynumdiff.linear_model._linear_model.spectraldiff(
+                v, dt, parameters[2], parameters[3]
+            )
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif parameters[1] == "Savitzky-Golay Filter":
+        try:
+            ps, v = pynumdiff.linear_model._linear_model.savgoldiff(
+                p, dt, parameters[2], parameters[3]
+            )
+            v, a = pynumdiff.linear_model._linear_model.savgoldiff(
+                v, dt, parameters[2], parameters[3]
+            )
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif parameters[1] == "Sliding Polynomial Derivative":
+        try:
+            ps, v = pynumdiff.linear_model._linear_model.polydiff(
+                p, dt, parameters[2], parameters[3]
+            )
+            v, a = pynumdiff.linear_model._linear_model.polydiff(
+                v, dt, parameters[2], parameters[3]
+            )
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif parameters[1] == "Sliding Chebychev Polynomial Fit":
+        try:
+            ps, v = pynumdiff.linear_model._linear_model.chebydiff(
+                p, dt, parameters[2], parameters[3]
+            )
+            v, a = pynumdiff.linear_model._linear_model.chebydiff(
+                v, dt, parameters[2], parameters[3]
+            )
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    else:
+        return False, 0, 0, 0
+
+
+def optimize_and_differentiate(p, dt, parameters):
+    """Calculates the velocity and the acceleration based on the given position data using optimization to determine the ideal parameters of the delected differentiation algorithm"""
+    gamma = np.exp(-1.6 * np.log(parameters[2]) - 0.71 * np.log(dt) - 5.1)
+
+    if parameters[1] == "Iterated First Order Finite Difference":
+        try:
+            params, val = pynumdiff.optimize.finite_difference.first_order(
+                p, dt, params=None, options={"iterate": True}, tvgamma=gamma
+            )
+            ps, v = pynumdiff.finite_difference.first_order(p, dt, params)
+            params, val = pynumdiff.optimize.finite_difference.first_order(
+                v, dt, params=None, options={"iterate": True}, tvgamma=gamma
+            )
+            v, a = pynumdiff.finite_difference.first_order(
+                v, dt, params, options={"iterate": True}
+            )
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif parameters[1] == "Finite Difference with Median Smoothing":
+        try:
+            params, val = pynumdiff.optimize.smooth_finite_difference.mediandiff(
+                p, dt, params=None, options={"iterate": True}, tvgamma=gamma
+            )
+            ps, v = pynumdiff.smooth_finite_difference.mediandiff(p, dt, params)
+            params, val = pynumdiff.optimize.finite_difference.first_order(
+                v, dt, params=None, options={"iterate": True}, tvgamma=gamma
+            )
+            v, a = pynumdiff.smooth_finite_difference.mediandiff(v, dt, params)
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif parameters[1] == "Finite Difference with Mean Smoothing":
+        try:
+            params, val = pynumdiff.optimize.smooth_finite_difference.meandiff(
+                p, dt, params=None, options={"iterate": True}, tvgamma=gamma
+            )
+            ps, v = pynumdiff.smooth_finite_difference.meandiff(p, dt, params)
+            params, val = pynumdiff.optimize.smooth_finite_difference.meandiff(
+                v, dt, params=None, options={"iterate": True}, tvgamma=gamma
+            )
+            v, a = pynumdiff.smooth_finite_difference.meandiff(v, dt, params)
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif parameters[1] == "Finite Difference with Gaussian Smoothing":
+        try:
+            params, val = pynumdiff.optimize.smooth_finite_difference.gaussiandiff(
+                p, dt, params=None, options={"iterate": True}, tvgamma=gamma
+            )
+            ps, v = pynumdiff.smooth_finite_difference.gaussiandiff(p, dt, params)
+            params, val = pynumdiff.optimize.smooth_finite_difference.gaussiandiff(
+                v, dt, params=None, options={"iterate": True}, tvgamma=gamma
+            )
+            v, a = pynumdiff.smooth_finite_difference.gaussiandiff(v, dt, params)
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif parameters[1] == "Finite Difference with Butterworth Smoothing":
+        try:
+            params, val = pynumdiff.optimize.smooth_finite_difference.butterdiff(
+                p, dt, params=None, options={"iterate": True}, tvgamma=gamma
+            )
+            ps, v = pynumdiff.smooth_finite_difference.butterdiff(p, dt, params)
+            params, val = pynumdiff.optimize.smooth_finite_difference.butterdiff(
+                v, dt, params=None, options={"iterate": True}, tvgamma=gamma
+            )
+            v, a = pynumdiff.smooth_finite_difference.butterdiff(v, dt, params)
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif parameters[1] == "Finite Difference with Friedrichs Smoothing":
+        try:
+            params, val = pynumdiff.optimize.smooth_finite_difference.friedrichsdiff(
+                p, dt, params=None, options={"iterate": True}, tvgamma=gamma
+            )
+            ps, v = pynumdiff.smooth_finite_difference.friedrichsdiff(p, dt, params)
+            params, val = pynumdiff.optimize.smooth_finite_difference.friedrichsdiff(
+                p, dt, params=None, options={"iterate": True}, tvgamma=gamma
+            )
+            v, a = pynumdiff.smooth_finite_difference.friedrichsdiff(v, dt, params)
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif parameters[1] == "Finite Difference with Spline Smoothing":
+        try:
+            params, val = pynumdiff.optimize.smooth_finite_difference.splinediff(
+                p, dt, params=None, options={"iterate": True}, tvgamma=gamma
+            )
+            ps, v = pynumdiff.smooth_finite_difference.splinediff(p, dt, params)
+            params, val = pynumdiff.optimize.smooth_finite_difference.splinediff(
+                v, dt, params=None, options={"iterate": True}, tvgamma=gamma
+            )
+            v, a = pynumdiff.smooth_finite_difference.splinediff(v, dt, params)
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif (
+        parameters[1]
+        == "Iterative Total Variation Regularization with Regularized Velocity"
+    ):
+        try:
+            options = {"cg_maxiter": len(p)}
+            options["scale"] = "small" if len(p) < 1000 else "large"
+            (
+                params,
+                val,
+            ) = pynumdiff.optimize.total_variation_regularization.iterative_velocity(
+                p, dt, params=None, tvgamma=gamma, options=options
+            )
+            ps, v = pynumdiff.total_variation_regularization.iterative_velocity(
+                p, dt, params, options
+            )
+            (
+                params,
+                val,
+            ) = pynumdiff.optimize.total_variation_regularization.iterative_velocity(
+                v, dt, params=None, tvgamma=gamma, options=options
+            )
+            v, a = pynumdiff.total_variation_regularization.iterative_velocity(
+                v, dt, params, options
+            )
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif (
+        parameters[1]
+        == "Convex Total Variation Regularization with Regularized Velocity"
+    ):
+        try:
+
+            params, val = pynumdiff.optimize.total_variation_regularization.velocity(
+                p, dt, params=None, tvgamma=gamma
+            )
+            (
+                ps,
+                v,
+            ) = pynumdiff.total_variation_regularization._total_variation_regularization.velocity(
+                p, dt, params
+            )
+
+            params, val = pynumdiff.optimize.total_variation_regularization.velocity(
+                v, dt, params=None, tvgamma=gamma
+            )
+            (
+                v,
+                a,
+            ) = pynumdiff.total_variation_regularization._total_variation_regularization.velocity(
+                v, dt, params
+            )
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif (
+        parameters[1]
+        == "Convex Total Variation Regularization with Regularized Acceleration"
+    ):
+        try:
+            (
+                params,
+                val,
+            ) = pynumdiff.optimize.total_variation_regularization.acceleration(
+                p, dt, params=None, tvgamma=gamma
+            )
+            (
+                ps,
+                v,
+            ) = pynumdiff.total_variation_regularization._total_variation_regularization.acceleration(
+                p, dt, params
+            )
+            (
+                params,
+                val,
+            ) = pynumdiff.optimize.total_variation_regularization.acceleration(
+                v, dt, params=None, tvgamma=gamma
+            )
+            (
+                v,
+                a,
+            ) = pynumdiff.total_variation_regularization._total_variation_regularization.acceleration(
+                v, dt, params
+            )
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif parameters[1] in {
+        "Convex Total Variation Regularization with Regularized Jerk",
+        "Convex Total Variation Regularization with Sliding Jerk",
+    }:
+        try:
+            (params, val) = pynumdiff.optimize.total_variation_regularization.jerk(
+                p, dt, params=None, tvgamma=gamma
+            )
+            (
+                ps,
+                v,
+            ) = pynumdiff.total_variation_regularization._total_variation_regularization.jerk(
+                p, dt, params
+            )
+            (params, val) = pynumdiff.optimize.total_variation_regularization.jerk(
+                v, dt, params=None, tvgamma=gamma
+            )
+            (
+                v,
+                a,
+            ) = pynumdiff.total_variation_regularization._total_variation_regularization.jerk(
+                v, dt, params
+            )
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+
+    elif (
+        parameters[1]
+        == "Convex Total Variation Regularization with Smoothed Acceleration"
+    ):
+        try:
+            (
+                params,
+                val,
+            ) = pynumdiff.optimize.total_variation_regularization.smooth_acceleration(
+                p, dt, params=None, tvgamma=gamma
+            )
+            (
+                ps,
+                v,
+            ) = pynumdiff.total_variation_regularization._total_variation_regularization.smooth_acceleration(
+                p, dt, params
+            )
+            (
+                params,
+                val,
+            ) = pynumdiff.optimize.total_variation_regularization.smooth_acceleration(
+                v, dt, params=None, tvgamma=gamma
+            )
+            (
+                v,
+                a,
+            ) = pynumdiff.total_variation_regularization._total_variation_regularization.smooth_acceleration(
+                v, dt, params
+            )
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif parameters[1] == "Spectral Derivative":
+        try:
+            params, val = pynumdiff.optimize.linear_model.spectraldiff(
+                p, dt, params=None, tvgamma=gamma
+            )
+
+            ps, v = pynumdiff.linear_model._linear_model.spectraldiff(p, dt, params)
+
+            params, val = pynumdiff.optimize.linear_model.spectraldiff(
+                v, dt, params=None, tvgamma=gamma
+            )
+
+            v, a = pynumdiff.linear_model._linear_model.spectraldiff(v, dt, params)
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif parameters[1] == "Savitzky-Golay Filter":
+        try:
+            params, val = pynumdiff.optimize.linear_model.savgoldiff(
+                p, dt, params=None, tvgamma=gamma
+            )
+            ps, v = pynumdiff.linear_model._linear_model.savgoldiff(p, dt, params)
+            params, val = pynumdiff.optimize.linear_model.savgoldiff(
+                v, dt, params=None, tvgamma=gamma
+            )
+            v, a = pynumdiff.linear_model._linear_model.savgoldiff(v, dt, params)
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif parameters[1] == "Sliding Polynomial Derivative":
+        try:
+            params, val = pynumdiff.optimize.linear_model.polydiff(
+                p, dt, params=None, tvgamma=gamma
+            )
+            ps, v = pynumdiff.linear_model._linear_model.polydiff(p, dt, params)
+            params, val = pynumdiff.optimize.linear_model.polydiff(
+                v, dt, params=None, tvgamma=gamma
+            )
+            v, a = pynumdiff.linear_model._linear_model.polydiff(v, dt, params)
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    elif parameters[1] == "Sliding Chebychev Polynomial Fit":
+        try:
+            params, val = pynumdiff.optimize.linear_model.chebydiff(
+                p, dt, params=None, tvgamma=gamma
+            )
+            ps, v = pynumdiff.linear_model._linear_model.chebydiff(p, dt, params)
+            params, val = pynumdiff.optimize.linear_model.chebydiff(
+                v, dt, params=None, tvgamma=gamma
+            )
+            v, a = pynumdiff.linear_model._linear_model.chebydiff(v, dt, params)
+            return True, ps, v, a
+        except Exception as e:
+            print(e)
+            return False, 0, 0, 0
+    else:
+        return False, 0, 0, 0

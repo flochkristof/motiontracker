@@ -15,7 +15,6 @@ class Motion:
         self.visible = visible
 
         # output, raw data
-        # self.timestamp = []
         self.rectangle_path = []
         self.point_path = []
         self.size_change = []
@@ -38,6 +37,20 @@ class Motion:
         self.velocity = None
         self.acceleration = None
 
+    def reset_output(self):
+        self.position = None
+        self.velocity = None
+        self.acceleration = None
+
+    def can_plot(self):
+        if (
+            self.position is not None
+            and self.acceleration is not None
+            and self.velocity is not None
+        ):
+            return True
+        return False
+
 
 class Rotation:
     """Object that stores rotation data"""
@@ -46,6 +59,17 @@ class Rotation:
         self.P1 = P1
         self.P2 = P2
         self.rotation = None
+        self.ang_velocity = None
+        self.ang_acceleration = None
+
+    def can_plot(self):
+        if (
+            self.rotation is not None
+            and self.ang_velocity is not None
+            and self.ang_acceleration is not None
+        ):
+            return True
+        return False
 
     def calculate(self):
         P = np.vectorize(lambda P: P.point_path)
@@ -55,16 +79,10 @@ class Rotation:
         rotation_init = np.arctan2(
             self.P2.point[1] - self.P1.point[1], self.P2.point[0] - self.P1.point[0]
         )
-        self.rotation = (
-            -(
-                np.arctan2(path2[:, 1] - path1[:, 1], path2[:, 0] - path1[:, 0])
-                - rotation_init
-            )
-            / np.pi
-            * 180
+        self.rotation = -(
+            np.arctan2(path2[:, 1] - path1[:, 1], path2[:, 0] - path1[:, 0])
+            - rotation_init
         )
-        self.ang_velocity = self.rotation
-        self.ang_acceleration = self.rotation
 
     def __str__(self):
         return self.P1.name + " - " + self.P2.name
@@ -98,6 +116,7 @@ class Ruler:
         self.y0 = None
         self.x1 = None
         self.y1 = None
+        self.rdy = False
 
     def calculate(self):
         if (
@@ -131,6 +150,7 @@ class Ruler:
         self.y1 = None
         self.mm = None
         self.mm_per_pix = None
+        self.rdy = False
 
 
 class Logger:
