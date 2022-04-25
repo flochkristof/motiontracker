@@ -44,6 +44,9 @@ import time  # only to measure performance
 
 
 class ExportingThread(QThread):
+    """Thread responsible for exporting video with tracked objects displayed"""
+
+    # create signals
     progressChanged = pyqtSignal(int)
     success = pyqtSignal()
     error_occured = pyqtSignal(str)
@@ -60,6 +63,7 @@ class ExportingThread(QThread):
         point_bool,
         trajectory_lenght,
     ):
+        """Initialization"""
         self.camera = camera
         self.objects = objects_to_track
         self.section_start = start
@@ -70,13 +74,18 @@ class ExportingThread(QThread):
         self.box_bool = box_bool
         self.point_bool = point_bool
         self.trajectory_length = trajectory_lenght
+
+        # call parent function
         super(ExportingThread, self).__init__()
 
     def cancel(self):
+        """Stops the calculation, exits the thread"""
         self.is_running = False
 
     def run(self):
-        # init writer
+        """Runs the exporting algorithm algoritm"""
+
+        # initialize writer
         h = int(self.camera.get(cv2.CAP_PROP_FRAME_HEIGHT))
         w = int(self.camera.get(cv2.CAP_PROP_FRAME_WIDTH))
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -84,13 +93,23 @@ class ExportingThread(QThread):
 
         # goto start
         self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start)
+
+        # export frame by frame
         for i in range(int(self.section_stop - self.section_start)):
+
+            # get position
             pos = self.camera.get(cv2.CAP_PROP_POS_FRAMES)
+
+            # read frame
             ret, frame = self.camera.read()
+
+            # stop in case of error
             if not ret:
                 self.is_running = False
                 self.error_occured.emit("Unable to read video frame!")
                 break
+
+            # display objects
             frame = display_objects(
                 frame,
                 pos,
@@ -101,15 +120,24 @@ class ExportingThread(QThread):
                 self.point_bool,
                 self.trajectory_length,
             )
+
+            # write frame to file
             writer.write(frame)
+
+            # update progress
             self.progressChanged.emit(
                 int(pos / (self.section_stop - self.section_start) * 100)
             )
+
         if self.is_running:
+            # emit signal
             self.success.emit()
 
 
 class TrackingThread(QThread):
+    """Thread responsible for running the tracking algorithms"""
+
+    # create signals
     progressChanged = pyqtSignal(int)
     newObject = pyqtSignal(str)
     success = pyqtSignal()
@@ -128,6 +156,7 @@ class TrackingThread(QThread):
         timestamp,
         roi_rect,
     ):
+        """Intitialization"""
         self.objects_to_track = objects_to_track
         self.camera = camera
         self.section_start = start
@@ -143,9 +172,12 @@ class TrackingThread(QThread):
             self.roi_rect = (0, 0)
         else:
             self.roi_rect = roi_rect
+
+        # call parent function
         super(TrackingThread, self).__init__()
 
     def cancel(self):
+        """Stops the """
         self.is_running = False
 
     def run(self):
@@ -187,18 +219,24 @@ class TrackingThread(QThread):
                 self.error_occured.emit("Unable to read video frame!")
                 return
 
+            # crop roi if provided
             if len(self.roi_rect) == 4:
                 frame = crop_roi(frame, self.roi_rect)
 
+            # initialize cv2 tracker
             try:
                 tracker.init(frame, rect2cropped(M.rectangle, self.roi_rect))
             except:
+                # handle error, stop the thread emit signal
                 self.is_running = False
-                self.error_occured.emit("Unable to initialize thr tracker!")
+                self.error_occured.emit("Unable to initialize the tracker!")
                 break
 
+            # add to path list
             M.rectangle_path.append(M.rectangle)
             M.point_path.append(M.point)
+
+            # record timestamp only for the first tracking
             if j == 0:
                 self.timestamp.append(0)
 
@@ -214,11 +252,14 @@ class TrackingThread(QThread):
             for i in range(int(self.section_stop - self.section_start)):
                 # read the next frame
                 ret, frame = self.camera.read()
+
+                # handle errors
                 if not ret:
                     self.error_occured.emit("Unable to read video frame!")
                     self.is_running = False
                     break
 
+                # crop if roi provided
                 if len(self.roi_rect) == 4:
                     frame = crop_roi(frame, self.roi_rect)
 
@@ -230,12 +271,14 @@ class TrackingThread(QThread):
                     self.is_running = False
                     break
 
-                if ret:
+                if ret:  # tracking duccessfull
+
                     # traditional tracking
                     x, y, w, h = roi_box
                     M.rectangle_path.append(
                         (self.roi_rect[0] + x, self.roi_rect[1] + y, w, h)
                     )
+
                     # M.rectangle_path.append(roi_box)
                     M.point_path.append(
                         (
@@ -248,27 +291,33 @@ class TrackingThread(QThread):
                     if self.size:
                         M.size_change.append((roi_box[2] / w0 + roi_box[3] / h0) / 2)
 
+                    # log timestamps
                     if j == 0:
                         self.timestamp.append((i + 1) / self.fps)
+
                     # progress
                     self.progress = math.ceil(
                         i / (self.section_stop - self.section_start) * 100
                     )
                     self.progressChanged.emit(self.progress)
-                    # self.status = f"Tracking ... {self.progress}"
                 else:
+                    # handle errors
                     self.error_occured.emit(
                         "Tracking failed!\n Tracker returned with failure!"
                     )
                     self.is_running = False
 
                 if not self.is_running:
+                    # reset path
                     M.rectangle_path = []
                     break
 
             if not self.is_running:
                 break
+        # set camera pos to start
         self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start)
+
+        # emit success signal
         if self.is_running:
             self.success.emit()
 
@@ -276,17 +325,20 @@ class TrackingThread(QThread):
 class VideoLabel(QLabel):
     """Label to display the frames from OpenCV"""
 
+    # create signals
     press = pyqtSignal(float, float)
     moving = pyqtSignal(float, float)
     release = pyqtSignal(float, float)
     wheel = pyqtSignal(float)
 
     def __init__(self, parent=None):
+        """Intitialization"""
         self.press_pos = None
         self.current_pos = None
         super(VideoLabel, self).__init__(parent)
 
     def wheelEvent(self, a0: QWheelEvent):
+        """Handles wheel event, emits signal with zoom parameter"""
         if a0.angleDelta().y() > 0:
             self.wheel.emit(-0.1)
         else:
@@ -294,6 +346,7 @@ class VideoLabel(QLabel):
         return super().wheelEvent(a0)
 
     def mousePressEvent(self, ev: QMouseEvent):
+        """Handles mouse press event, emits coordinates"""
         x_label, y_label, = ev.x(), ev.y()
 
         if self.pixmap():
@@ -318,6 +371,7 @@ class VideoLabel(QLabel):
         super().mousePressEvent(ev)
 
     def mouseMoveEvent(self, ev: QMouseEvent):
+        """Handles mouse movement, emits coordinates"""
         x_label, y_label, = ev.x(), ev.y()
 
         if self.pixmap():
@@ -342,6 +396,7 @@ class VideoLabel(QLabel):
         super().mousePressEvent(ev)
 
     def mouseReleaseEvent(self, ev: QMouseEvent):
+        """Handles mouse release, emits coordinates"""
         x_label, y_label, = ev.x(), ev.y()
 
         if self.pixmap():
@@ -368,14 +423,21 @@ class VideoLabel(QLabel):
 class ObjectListWidget(QListWidget):
     """Widget that displays the objects created by the user"""
 
+    # create signals
     delete = pyqtSignal(str)
     changeVisibility = pyqtSignal(str)
 
     def __init__(self, parent=None):
+        """Initialize"""
+
+        # call parent function
         super(ObjectListWidget, self).__init__(parent)
+
+        # connect signal
         self.itemClicked.connect(self.listItemMenu)
 
     def listItemMenu(self, item):
+        """Opens the menu"""
         menu = QMenu()
         menu.addAction("Show/Hide", lambda: self.changeVisibility.emit(item.text()))
         menu.addSeparator()
@@ -385,32 +447,40 @@ class ObjectListWidget(QListWidget):
 
 
 class RotationListWidget(QListWidget):
-    """Widget that displays the rotations"""
+    """Widget that displays the created rotations"""
 
+    # create signal
     delete = pyqtSignal(str)
 
     def __init__(self, parent=None):
+        """Initialize"""
+
+        # call parent function
         super(RotationListWidget, self).__init__(parent)
+
+        # connect signal
         self.itemClicked.connect(self.listItemMenu)
 
     def listItemMenu(self, item):
+        """Open menu"""
         menu = QMenu()
-        # menu.addAction("Show/Hide", lambda: self.changeVisibility.emit(item.text()))
-        # menu.addSeparator()
         menu.addAction("Delete", lambda: self.delete.emit(item.text()))
         menu.exec_(QCursor.pos())
         menu.deleteLater()
-
-    pass
 
 
 class PostProcessSettings(QDialog):
     """Modal dialog for users to specify post processing settings"""
 
+    # create signal
     diffdata = pyqtSignal(tuple)
 
     def __init__(self, parent=None):
+
+        # call parent function
         super().__init__(parent)
+
+        # styling
         self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
         self.setWindowTitle("Post-processing settings")
         self.setModal(True)
@@ -706,18 +776,27 @@ class PostProcessSettings(QDialog):
             )
 
     def modeUpdated(self):
+        """Changes the accessibility of input fields based on selected mode"""
+
+        # manually specified input params
         if self.manSpecRDB.isChecked():
             for p in self.parameters_list:
                 p.setEnabled(True)
             self.cutoffOptGB.setEnabled(False)
+
+        # optimization based input data
         elif self.optRDB.isChecked():
             self.cutoffOptGB.setEnabled(True)
             for p in self.parameters_list:
                 p.setEnabled(False)
 
     def diffSpecUpdated(self):
+        """Reorganize input fields based on selected algorithm"""
+
+        # get algorithm
         algo = self.diffSpecCMB.currentText()
-        # ["First Order Finite Difference", "Iterated First Order Fintie Difference", "Second Order Finite Difference"]
+
+        # reorganize
         if algo == "First Order Finite Difference":
             # reset
             for p in self.parameters_list:
@@ -781,7 +860,6 @@ class PostProcessSettings(QDialog):
             self.orderGB.setVisible(True)
             self.smoothFactGB.setVisible(True)
             self.noInputSpecLBL.setVisible(False)
-        # ["Iterative Total Variation Regularization with Regularized Velocity","Convex Total Variation Regularization With Regularized Velocity","Convex Total Variation Regularization with Regularized Acceleration","Convex Total Variation Regularization with Regularized Jerk","Convex Total Variation Regularization with Sliding","Convex Total Variation Regularization with Smoothed Acceleration",
         elif algo in {
             "Iterative Total Variation Regularization with Regularized Velocity",
             "Convex Total Variation Regularization with Sliding Jerk",
@@ -818,8 +896,6 @@ class PostProcessSettings(QDialog):
             self.regParGB.setVisible(True)
             self.winSizeGB.setVisible(True)
             self.noInputSpecLBL.setVisible(False)
-        # "Spectral Derivative","Sliding Polynomial Derivative","Savitzky-Golay Filter","Sliding Chebychev Polynomial Fit",
-
         elif algo in {
             "Sliding Polynomial Derivative",
             "Sliding Chebychev Polynomial Fit",
@@ -857,16 +933,21 @@ class PostProcessSettings(QDialog):
             self.noInputSpecLBL.setVisible(False)
 
     def collectParameters(self):
+        """Collects the needed parameters of the selected differentiation algoritms"""
+
+        # algorithm without params
         algo = self.diffSpecCMB.currentText()
-        # differenciálás paraméterek nélkül
         if algo in {"First Order Finite Difference", "Second Order Finite Difference"}:
             return (False, algo, None)
-        # Optimizáció alapú paraméterkeresés
+
+        # optimization based algorithms, only one input parameter
         elif self.optRDB.isChecked():
             if self.cutoffOptLNE.text() != "":
                 return (True, algo, float(self.cutoffOptLNE.text()))
             else:
                 return None
+
+        # manually specified parameters
         elif self.manSpecRDB.isChecked():
             if algo == "Iterated First Order Finite Difference":
                 if self.iterationsLNE.text() != "":
@@ -1043,7 +1124,12 @@ class TrackingSettings(QDialog):
     """Modal dialog for users to specify the tracking settings"""
 
     def __init__(self, parent=None):
+        """Initialization"""
+
+        # call parent function
         super().__init__(parent)
+
+        # styling
         self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
         self.setWindowTitle("Tracking settings")
         self.setModal(True)
@@ -1053,26 +1139,34 @@ class TrackingSettings(QDialog):
         self.setObjectName("tracker_window")
         self.setFixedSize(270, 200)
 
-        # Creating the widgets
+        ## initilaize and organize layout
+
+        # tracking algorithm
         algoLBL = QLabel("Tracking Algorithm:")
         self.algoCMB = QComboBox()
         self.algoCMB.addItems(
             ["CSRT", "BOOSTING", "MIL", "KCF", "TLD", "MEDIANFLOW", "MOSSE"]
         )
+
+        # size change CheckBox
         sizeLBL = QLabel("Track the size change of objects:")
         self.sizeCHB = QCheckBox()
         self.sizeCHB.setLayoutDirection(Qt.RightToLeft)
         self.sizeCHB.stateChanged.connect(self.sizeMode)
 
+        # FPS input LineEdit
         fpsLBL = QLabel("Real FPS:")
         self.fpsLNE = QLineEdit()
         self.fpsLNE.setValidator(QIntValidator(1, 100000))
         self.notificationLBL = QLabel(
             "Important information: Only the CSRF algorithm is capable of tracking the size change of an object!"
         )
+
+        # notification LBL
         self.notificationLBL.setVisible(False)
         self.notificationLBL.setWordWrap(True)
 
+        # button
         trackBTN = QPushButton("Track")
         trackBTN.clicked.connect(self.accept)
         trackBTN.setObjectName("trackBTN")
@@ -1110,230 +1204,16 @@ class TrackingSettings(QDialog):
             self.algoCMB.setEnabled(True)
 
 
-"""class TrackingSettings(QDialog):
-    Modal dialog where users can specify the tracking settings
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
-        self.setWindowTitle("Tracking details")
-        self.setModal(True)
-        with open("style/tracking.qss", "r") as style:
-            self.setStyleSheet(style.read())
-        self.setWindowIcon(QIcon("images/logo.svg"))
-        self.setObjectName("tracker_window")
-
-        #### Additional Features ###
-        # self.rotationCHB = QCheckBox("Track rotation")
-        # self.rotationCHB.stateChanged.connect(self.openRotationSettings)
-        # self.sizeCHB = QCheckBox("Track size change")
-        # self.sizeCHB.stateChanged.connect(self.sizeMode)
-        #
-        # featureLayout = QVBoxLayout()
-        # featureLayout.addWidget(self.rotationCHB)
-        # featureLayout.addWidget(self.sizeCHB)
-        #
-        # featureGB = QGroupBox("Additional features to track")
-        # featureGB.setLayout(featureLayout)
-        #
-        #### Tracking algorithm ###
-        # self.algoritmCMB = QComboBox()
-        # self.algoritmCMB.addItems(
-        #    ["CSRT", "BOOSTING", "MIL", "KCF", "TLD", "MEDIANFLOW", "MOSSE"]
-        # )
-        #
-        # self.zoomNotificationLBL = QLabel(
-        #    "Only the CSRT algorithm is capable of handling the size change of an object!"
-        # )
-        # self.zoomNotificationLBL.setVisible(False)
-        # algoLayout = QVBoxLayout()
-        # algoLayout.addWidget(self.algoritmCMB)
-        # algoLayout.addWidget(self.zoomNotificationLBL)
-        #
-        # algoGB = QGroupBox("Tracking algorithm")
-        # algoGB.setLayout(algoLayout)
-
-        ### Tracking settings ###
-        algoLBL = QLabel("Tracking algorithm")
-        self.algoritmCMB = QComboBox()
-        self.algoritmCMB.addItems(
-            ["CSRT", "BOOSTING", "MIL", "KCF", "TLD", "MEDIANFLOW", "MOSSE"]
-        )
-
-        ## Zoom settings ##
-        self.sizeCHB = QCheckBox("Track size change")
-        self.sizeCHB.stateChanged.connect(self.sizeMode)
-        self.zoomNotificationLBL = QLabel(
-            "Important! Only the CSRT algorithm is capable of handling the size change of an object!"
-        )
-        self.zoomNotificationLBL.setVisible(False)
-        self.zoomNotificationLBL.setWordWrap(True)
-        self.zoomNotificationLBL.setObjectName("zoomnotificationLBL")
-
-        ## organizing the layout
-        algoLayout = QHBoxLayout()
-        algoLayout.addWidget(algoLBL)
-        algoLayout.addWidget(self.algoritmCMB)
-
-        propLayout = QHBoxLayout()
-        propLayout.addLayout(algoLayout)
-        propLayout.addWidget(self.sizeCHB)
-        # propLayout.addWidget(self.zoomNotificationLBL)
-
-        topLayout = QVBoxLayout()
-        topLayout.addLayout(propLayout)
-        topLayout.addWidget(self.zoomNotificationLBL)
-
-        ### Left side veritcal layout GroupBox ###
-        topGB = QGroupBox("Tracking settings")
-        topGB.setLayout(topLayout)
-
-        ### Real FPS input ###
-        fpsLBL = QLabel("Real FPS:")
-        self.fpsLNE = QLineEdit()
-        self.fpsLNE.setValidator(QIntValidator(0, 1000000))
-
-        fpsLayout = QHBoxLayout()
-        fpsLayout.addWidget(fpsLBL)
-        fpsLayout.addWidget(self.fpsLNE)
-
-        ### Filter ###
-        filterLBL = QLabel("Filter:")
-        self.filterCMB = QComboBox()
-        self.filterCMB.addItem("None")
-        self.filterCMB.addItem("Gaussian")
-        self.filterCMB.addItem("Moving AVG")
-        self.filterCMB.addItem("Savitzky-Golay")
-        self.filterCMB.currentTextChanged.connect(self.openFilterSettings)
-        self.filterCMB.setObjectName("filterCMB")
-
-        filterHLayout = QHBoxLayout()
-        filterHLayout.addWidget(filterLBL)
-        filterHLayout.addWidget(self.filterCMB)
-
-        filterBTN = QPushButton("Filter settings")
-        filterBTN.clicked.connect(self.openFilterSettings)
-
-        filterVLayout = QVBoxLayout()
-        filterVLayout.addLayout(filterHLayout)
-        filterVLayout.addWidget(filterBTN)
-
-        ### Derivative ###
-        derivativeLBL = QLabel("Derivative:")
-        self.derivativeCMB = QComboBox()
-        self.derivativeCMB.addItem("LOESS-coefficients")
-        self.derivativeCMB.addItem("Finite differences")
-        self.derivativeCMB.currentTextChanged.connect(self.openDerivativeSettings)
-        self.derivativeCMB.setObjectName("derivativeCMB")
-
-        derivativeHLayout = QHBoxLayout()
-        derivativeHLayout.addWidget(derivativeLBL)
-        derivativeHLayout.addWidget(self.derivativeCMB)
-
-        derivativeBTN = QPushButton("Derivative settings")
-        derivativeBTN.clicked.connect(self.openDerivativeSettings)
-
-        derivativeVLayout = QVBoxLayout()
-        derivativeVLayout.addLayout(derivativeHLayout)
-        derivativeVLayout.addWidget(derivativeBTN)
-
-        # Botton layout and groupbox
-        bottonLayout = QVBoxLayout()
-        bottonLayout.addLayout(fpsLayout)
-
-        processingLayout = QHBoxLayout()
-        processingLayout.addLayout(filterVLayout)
-        processingLayout.addLayout(derivativeVLayout)
-
-        bottonLayout.addLayout(processingLayout)
-
-        bottomGB = QGroupBox("Post-processing settings")
-        bottomGB.setLayout(bottonLayout)
-
-        # rightLayout = QVBoxLayout()
-        # rightLayout.addLayout(fpsLayout)
-        # rightLayout.addLayout(filterHLayout)
-        # rightLayout.addWidget(filterBTN)
-        # rightLayout.addLayout(derivativeHLayout)
-        # rightLayout.addWidget(derivativeBTN)
-        #
-        # rightGB = QGroupBox("Post-processing settings")
-        # rightGB.setLayout(rightLayout)
-        #
-        #### Settings horizontal layout ###
-        # settingsLayout = QHBoxLayout()
-        # settingsLayout.addWidget(leftGB)
-        # settingsLayout.addWidget(rightGB)
-
-        ### TRACK button and final layout
-        trackBTN = QPushButton("Track")
-        trackBTN.clicked.connect(self.accept)
-        trackBTN.setObjectName("trackBTN")
-
-        mainlayout = QVBoxLayout()
-        mainlayout.addWidget(topGB)
-        mainlayout.addWidget(bottomGB)
-        mainlayout.addWidget(trackBTN)
-
-        self.setLayout(mainlayout)
-
-        ### Rotation settings dialog ####
-        self.rotationSettings = RotationSettings()
-        self.filterSettings = FilterSettings()
-        self.derivativeSettings = DerivativeSettings()
-
-    # def openRotationSettings(self):
-    #    if self.rotationCHB.isChecked():
-    #        if self.rotationSettings.p1CMB.count() >= 2:
-    #            self.rotationSettings.exec_()
-    #        else:
-    #            self.rotationCHB.setCheckState(Qt.Unchecked)
-    #            msg = QMessageBox()
-    #            msg.setWindowTitle("Not enough points!")
-    #            msg.setText("You need at least two points for rotation tracking!")
-    #            msg.setIcon(QMessageBox.Warning)
-    #            msg.exec_()
-    #            self.rotationCHB.setChecked(False)
-
-    def openFilterSettings(self):
-        filter_type = self.filterCMB.currentText()
-        if filter_type != "None":
-            self.filterSettings.setFilter(self.filterCMB.currentText())
-            self.filterSettings.exec_()
-
-    def openDerivativeSettings(self):
-        self.derivativeSettings.setDerivative(self.derivativeCMB.currentText())
-        self.derivativeSettings.exec_()
-
-    def sizeMode(self):
-        if self.sizeCHB.isChecked():
-            self.zoomNotificationLBL.setVisible(True)
-            self.algoritmCMB.setCurrentText("CSRT")
-            self.algoritmCMB.setEditable(False)
-            self.algoritmCMB.setEnabled(False)
-        else:
-            self.zoomNotificationLBL.setVisible(False)
-            self.algoritmCMB.setEnabled(True)
-
-    def tracker_type(self):
-        return self.algoritmCMB.currentText()
-
-    def size_change(self):
-        return self.sizeCHB.isChecked()
-
-    # def rotation(self):
-    #    return self.rotationCHB.isChecked()
-
-    def fps(self):
-        return self.fpsLNE.text()
-"""
-
-
 class RotationSettings(QDialog):
     """Dialog to select points for rotation tracking"""
 
     def __init__(self, parent=None):
+        """Initialization"""
+
+        # call parent function
         super().__init__(parent)
+
+        # styling
         self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
         self.setWindowTitle("Rotation settings")
         self.setWindowIcon(QIcon("images/logo.svg"))
@@ -1341,7 +1221,9 @@ class RotationSettings(QDialog):
         with open("style/rotation.qss", "r") as style:
             self.setStyleSheet(style.read())
         self.setModal(True)
-        # self.setAttribute(Qt.WA_DeleteOnClose)
+        # self.setAttribute(Qt.WA_DeleteOnClose) TODO
+
+        # initialize and organize layout
         instuctionLBL = QLabel("Select two points for for tracking")
         self.warningLBL = QLabel("You must select two different points!")
         self.warningLBL.setVisible(False)
@@ -1372,179 +1254,16 @@ class RotationSettings(QDialog):
             self.p2CMB.addItem(str(obj))
 
 
-class FilterSettings(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
-        self.setWindowIcon(QIcon("images/logo.svg"))
-        with open("style/filter-derivative.qss", "r") as style:
-            self.setStyleSheet(style.read())
-        self.setObjectName("filter")
-        self.setWindowTitle("Filter settings")
-        self.setModal(True)
-
-        # GAUSS FILTER
-        gwindowLBL = QLabel("Window")
-        self.gwindowLNE = QLineEdit()
-        self.gwindowLNE.setValidator(QIntValidator(0, 100))
-        self.gwindowLNE.setText("5")
-        gwindowLayout = QHBoxLayout()
-        gwindowLayout.addWidget(gwindowLBL)
-        gwindowLayout.addWidget(self.gwindowLNE)
-        gsigmaLBL = QLabel("Sigma")
-        self.gsigmaLNE = QLineEdit()
-        self.gsigmaLNE.setValidator(QIntValidator(0, 10))
-        self.gsigmaLNE.setText("3")
-        gsigmaLayout = QHBoxLayout()
-        gsigmaLayout.addWidget(gsigmaLBL)
-        gsigmaLayout.addWidget(self.gsigmaLNE)
-        gaussBTN = QPushButton("Set")
-        gaussBTN.clicked.connect(self.accept)
-        gaussLayout = QVBoxLayout()
-        gaussLayout.addLayout(gwindowLayout)
-        gaussLayout.addLayout(gsigmaLayout)
-        gaussLayout.addWidget(gaussBTN)
-        self.gaussGB = QGroupBox("Gauss")
-        self.gaussGB.setLayout(gaussLayout)
-
-        # MOVING AVERAGE
-        mwindowLBL = QLabel("Window")
-        self.mwindowLNE = QLineEdit()
-        self.mwindowLNE.setValidator(QIntValidator(0, 100))
-        self.mwindowLNE.setText("5")
-        mwindowLayout = QHBoxLayout()
-        mwindowLayout.addWidget(mwindowLBL)
-        mwindowLayout.addWidget(self.mwindowLNE)
-        mavgBTN = QPushButton("Set")
-        mavgBTN.clicked.connect(self.accept)
-        mavgLayout = QVBoxLayout()
-        mavgLayout.addLayout(mwindowLayout)
-        mavgLayout.addWidget(mavgBTN)
-        self.mavgGB = QGroupBox("Moving AVG")
-        self.mavgGB.setLayout(mavgLayout)
-
-        # SAVITZKY-GOLAY
-        sgwindowLBL = QLabel("Window")
-        self.sgwindowLNE = QLineEdit()
-        self.sgwindowLNE.setValidator(QIntValidator(0, 100))
-        self.sgwindowLNE.setText("5")
-        sgwindowLayout = QHBoxLayout()
-        sgwindowLayout.addWidget(sgwindowLBL)
-        sgwindowLayout.addWidget(self.sgwindowLNE)
-        sgpolLBL = QLabel("Polynom")
-        self.sgpolLNE = QLineEdit()
-        self.sgpolLNE.setValidator(QIntValidator(0, 20))
-        self.sgpolLNE.setText("3")
-        sgpolLayout = QHBoxLayout()
-        sgpolLayout.addWidget(sgpolLBL)
-        sgpolLayout.addWidget(self.sgpolLNE)
-        sgBTN = QPushButton("Set")
-        sgBTN.clicked.connect(self.accept)
-        sgLayout = QVBoxLayout()
-        sgLayout.addLayout(sgwindowLayout)
-        sgLayout.addLayout(sgpolLayout)
-        sgLayout.addWidget(sgBTN)
-        self.sgGB = QGroupBox("Savitzky-Golay")
-        self.sgGB.setLayout(sgLayout)
-
-        mainLayout = QVBoxLayout()
-        mainLayout.addWidget(self.gaussGB)
-        mainLayout.addWidget(self.mavgGB)
-        mainLayout.addWidget(self.sgGB)
-
-        self.setLayout(mainLayout)
-
-    def setFilter(self, filter_type):
-        if filter_type == "Gaussian":
-            self.gaussGB.setVisible(True)
-            self.mavgGB.setVisible(False)
-            self.sgGB.setVisible(False)
-
-        elif filter_type == "Moving AVG":
-            self.gaussGB.setVisible(False)
-            self.mavgGB.setVisible(True)
-            self.sgGB.setVisible(False)
-
-        elif filter_type == "Savitzky-Golay":
-            self.gaussGB.setVisible(False)
-            self.mavgGB.setVisible(False)
-            self.sgGB.setVisible(True)
-
-
-class DerivativeSettings(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
-        self.setWindowTitle("Derivative settings")
-        self.setWindowIcon(QIcon("images/logo.svg"))
-        with open("style/filter-derivative.qss", "r") as style:
-            self.setStyleSheet(style.read())
-        self.setObjectName("derivative")
-        self.setModal(True)
-
-        # SAVITZKY-GOLAY
-        sgwindowLBL = QLabel("Window")
-        self.sgwindowLNE = QLineEdit()
-        self.sgwindowLNE.setValidator(QIntValidator(0, 100))
-        self.sgwindowLNE.setText("5")
-        sgwindowLayout = QHBoxLayout()
-        sgwindowLayout.addWidget(sgwindowLBL)
-        sgwindowLayout.addWidget(self.sgwindowLNE)
-        sgpolLBL = QLabel("Polynom")
-        self.sgpolLNE = QLineEdit()
-        self.sgpolLNE.setValidator(QIntValidator(0, 20))
-        self.sgpolLNE.setText("3")
-        sgpolLayout = QHBoxLayout()
-        sgpolLayout.addWidget(sgpolLBL)
-        sgpolLayout.addWidget(self.sgpolLNE)
-        sgBTN = QPushButton("Set")
-        sgBTN.clicked.connect(self.accept)
-        sgLayout = QVBoxLayout()
-        sgLayout.addLayout(sgwindowLayout)
-        sgLayout.addLayout(sgpolLayout)
-        sgLayout.addWidget(sgBTN)
-        self.sgGB = QGroupBox("LOESS-coefficients")
-        self.sgGB.setLayout(sgLayout)
-
-        # FINITE DIFFERENCES
-        apprLBL = QLabel("Approximation order")
-        self.apprLNE = QLineEdit()
-        self.apprLNE.setValidator(QIntValidator(1, 20))
-        self.apprLNE.setText("9")
-        apprHLayout = QHBoxLayout()
-        apprHLayout.addWidget(apprLBL)
-        apprHLayout.addWidget(self.apprLNE)
-
-        apprBTN = QPushButton("Set")
-        apprBTN.clicked.connect(self.accept)
-
-        apprLayout = QVBoxLayout()
-        apprLayout.addLayout(apprHLayout)
-        apprLayout.addWidget(apprBTN)
-
-        self.apprGB = QGroupBox("Finite difference")
-        self.apprGB.setLayout(apprLayout)
-
-        mainLayout = QVBoxLayout()
-        mainLayout.addWidget(self.sgGB)
-        mainLayout.addWidget(self.apprGB)
-
-        self.setLayout(mainLayout)
-
-    def setDerivative(self, deriv_name):
-        if deriv_name == "LOESS-coefficients":
-            self.sgGB.setVisible(True)
-            self.apprGB.setVisible(False)
-        else:
-            self.sgGB.setVisible(False)
-            self.apprGB.setVisible(True)
-
-
 class TrackingProgress(QDialog):
     """A modal dialog that shows the progress of the tracking"""
 
     def __init__(self, parent=None):
+        """Initialization"""
+
+        # call parent function
         super().__init__(parent)
+
+        # styling
         self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
         self.setWindowTitle("Calculation in progress...")
         self.setWindowIcon(QIcon("images/logo.svg"))
@@ -1552,6 +1271,8 @@ class TrackingProgress(QDialog):
             self.setStyleSheet(style.read())
         self.setObjectName("progress")
         self.setModal(True)
+
+        # initialize and organize layout
         Layout = QVBoxLayout()
         self.label = QLabel()
         self.label.setStyleSheet("text-align: center;")
@@ -1567,19 +1288,24 @@ class TrackingProgress(QDialog):
         self.setLayout(Layout)
 
     def updateName(self, name):
+        """Updates Label text"""
         self.label.setText(name)
 
     def updateBar(self, value):
+        """Updates the ProgressBar"""
         self.progressbar.setValue(value)
 
 
 class PostProcesserThread(QThread):
+    """Thread responsible for the post processing of the data collected by the trackers"""
+
     progressChanged = pyqtSignal(int)
     newObject = pyqtSignal(str)
     success = pyqtSignal()
     error_occured = pyqtSignal(str)
 
     def __init__(self, mode, objects_to_track, dt, parameters):
+        """Initialization"""
         self.objects_to_track = objects_to_track
         self.dt = dt
         self.parameters = parameters
@@ -1589,9 +1315,11 @@ class PostProcesserThread(QThread):
         super(PostProcesserThread, self).__init__()
 
     def cancel(self):
+        """Stops calculations exits the thread"""
         self.is_running = False
 
     def run(self):
+        """Runs the post-processing code"""
         if self.mode:
             if self.parameters is None:
                 self.error_occured.emit("Error: Invalid parameters!")
@@ -1685,7 +1413,10 @@ class ExportDialog(QDialog):
     export = pyqtSignal(dict)
 
     def __init__(self, parent=None):
+        # call parent function
         super().__init__(parent)
+
+        # styling
         self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
         self.setWindowIcon(QIcon("images/logo.svg"))
         self.setObjectName("export_dialog")
@@ -1694,6 +1425,7 @@ class ExportDialog(QDialog):
         self.setWindowTitle("Export options")
         self.setModal(False)
 
+        # list of objects and data initialization
         self.obj_checkboxes = []
         self.size_checkboxes = []
         self.rot_checkboxes = []
@@ -1873,12 +1605,14 @@ class ExportDialog(QDialog):
         self.setLayout(self.Layout)
 
     def show(self, size, rot, mov):
+        """Shows the widget"""
         self.manage_rotation(rot)
         self.manage_size(size)
         self.manage_mov(mov)
         return super().show()
 
     def setRuler(self, rdy):
+        """Sets the ruler properties"""
         if rdy:
             self.mmRDB.setEnabled(True)
             self.mRDB.setEnabled(True)
@@ -1887,6 +1621,7 @@ class ExportDialog(QDialog):
             self.mRDB.setEnabled(False)
 
     def manage_rotation(self, rot):
+        """Manages widget properties based on available data"""
         if len(self.rot_checkboxes) != 0:
             self.rotFrame.setHidden(False)
             if rot:
@@ -1899,12 +1634,14 @@ class ExportDialog(QDialog):
             self.rotFrame.setHidden(True)
 
     def manage_size(self, size):
+        """Managee widget properties based on available data"""
         if size != 0:
             self.sizeFrame.setHidden(False)
         else:
             self.sizeFrame.setHidden(True)
 
     def manage_mov(self, mov):
+        """Manages widget properties based on available data"""
         if len(self.obj_checkboxes) != 0:
             self.objFrame.setHidden(False)
             self.warningLBL.setVisible(False)
@@ -1920,6 +1657,7 @@ class ExportDialog(QDialog):
             self.warningLBL.setVisible(True)
 
     def add_object(self, object_name):
+        """Add object CheckBox"""
         checkbox1 = QCheckBox(object_name)
         self.objNameLayout.addWidget(checkbox1)
         self.obj_checkboxes.append(checkbox1)
@@ -1928,6 +1666,9 @@ class ExportDialog(QDialog):
         self.size_checkboxes.append(checkbox2)
 
     def delete_object(self, object_name):
+        """Deletes object CheckBox"""
+
+        # all checkboxes
         if object_name == "ALL":
             for obj in self.obj_checkboxes:
                 obj.deleteLater()
@@ -1950,7 +1691,7 @@ class ExportDialog(QDialog):
             self.obj_checkboxes[index].deleteLater()
             del self.obj_checkboxes[index]
 
-        # delet from size change
+        # delete from size change
         index = next(
             (
                 i
@@ -1964,11 +1705,16 @@ class ExportDialog(QDialog):
             del self.size_checkboxes[index]
 
     def add_rotation(self, rot_name):
+        """Adds CheckBox with rotation name"""
+
         checkbox1 = QCheckBox(rot_name)
         self.rotNameLayout.addWidget(checkbox1)
         self.rot_checkboxes.append(checkbox1)
 
     def delete_rotation(self, rot_name):
+        """Deletes rotation CheckBox"""
+
+        # clear all rotation
         if rot_name == "ALL":
             for rot in self.rot_checkboxes:
                 rot.deleteLater()
@@ -1988,7 +1734,7 @@ class ExportDialog(QDialog):
             self.rot_checkboxes[index].deleteLater()
             del self.rot_checkboxes[index]
 
-        # delet from size change
+        # delete from size change
         index = next(
             (
                 i
@@ -2002,15 +1748,21 @@ class ExportDialog(QDialog):
             del self.rot_checkboxes[index]
 
     def plot_movement(self):
-        print("plot movement function called!")
+        """Collects movement data properties and emits signal"""
+
+        # set default params
         self.parameters.clear()
         self.parameters["out"] = "PLOT"
         self.parameters["mode"] = "MOV"
+
+        # get objects
         objs = [
             checkbox.text() for checkbox in self.obj_checkboxes if checkbox.isChecked()
         ]
         self.parameters["objects"] = objs
         self.get_movement_parameters()
+
+        # check if params are collected properly
         if (
             "mode"
             and "units"
@@ -2019,11 +1771,13 @@ class ExportDialog(QDialog):
             and "prop"
             and "ax" in self.parameters
         ):
-            print("plot signal emitted")
+            # emit signal
             self.export.emit(self.parameters)
-            # self.accept()
 
     def export_movement(self):
+        """Collects movement data properties and emits signal"""
+
+        # set default params
         self.parameters.clear()
         self.parameters["out"] = "EXP"
         self.parameters["mode"] = "MOV"
@@ -2045,58 +1799,85 @@ class ExportDialog(QDialog):
             # self.accept()
 
     def plot_rotation(self):
+        """Collect rotation data properties and emits signal"""
+
+        # set default params
         self.parameters.clear()
         self.parameters["out"] = "PLOT"
         self.parameters["mode"] = "ROT"
+
+        # get rotation objects
         rots = [
             checkbox.text() for checkbox in self.rot_checkboxes if checkbox.isChecked()
         ]
         self.parameters["rotations"] = rots
         self.get_rotation_parameters()
+
+        # check if parameters are collected properly
         if "mode" and "units" and "out" and "rotations" and "prop" in self.parameters:
+
+            # emit signals
             self.export.emit(self.parameters)
-            print("plot signal emitted")
-            # self.accept()
 
     def export_rotation(self):
+        """Collects rotation data properties and emits signal"""
+
+        # set default params
         self.parameters.clear()
         self.parameters["out"] = "EXP"
         self.parameters["mode"] = "ROT"
+
+        # get rotations objects
         rots = [
             checkbox.text() for checkbox in self.rot_checkboxes if checkbox.isChecked()
         ]
         self.parameters["rotations"] = rots
+
+        # get parameters
         self.get_rotation_parameters()
+
+        # check if parameters are collected properly
         if "mode" and "units" and "out" and "rotations" and "prop" in self.parameters:
+
+            # emit signal
             self.export.emit(self.parameters)
-            print("plot signal emitted")
-            # self.accept()
 
     def plot_size(self):
+        """Collects size data properties and emits signal"""
+
+        # get parameters
         self.parameters.clear()
         self.parameters["out"] = "PLOT"
         self.parameters["mode"] = "SIZ"
+
+        # get objects
         objs = [
             checkbox.text() for checkbox in self.size_checkboxes if checkbox.isChecked()
         ]
         self.parameters["objects"] = objs
-        print("plot signal emitted")
+
+        # emit signals
         self.export.emit(self.parameters)
-        # self.accept()
 
     def export_size(self):
+        """Collects size data properties and emits signal"""
+
+        # get parameters
         self.parameters.clear()
         self.parameters["out"] = "EXP"
         self.parameters["mode"] = "SIZ"
         objs = [
             checkbox.text() for checkbox in self.size_checkboxes if checkbox.isChecked()
         ]
+
+        # get objects
         self.parameters["objects"] = objs
-        print("plot signal emitted")
+
+        # emit signals
         self.export.emit(self.parameters)
-        # self.accept()
 
     def get_movement_parameters(self):
+
         # PROPERTY
         if self.posRDB.isChecked():
             self.parameters["prop"] = "POS"
@@ -2106,6 +1887,7 @@ class ExportDialog(QDialog):
             self.parameters["prop"] = "ACC"
         else:
             self.parameters.clear()
+
         # AXIS
         if self.xtRDB.isChecked():
             self.parameters["ax"] = "XT"
@@ -2127,58 +1909,54 @@ class ExportDialog(QDialog):
             self.parameters.clear()
 
     def get_rotation_parameters(self):
-        # print(self.parameters)
-        # PROPERTY
+        # get PROPERTY
         if self.rot_posRDB.isChecked():
-            # print("pos is checked")
             self.parameters["prop"] = "POS"
-            # print(self.parameters)
         elif self.rot_velRDB.isChecked():
             self.parameters["prop"] = "VEL"
-            # print(self.parameters)
         elif self.rot_accRDB.isChecked():
             self.parameters["prop"] = "ACC"
-            # print(self.parameters)
         else:
             self.parameters.clear()
-            # print(self.parameters)
 
-        # UNIT
+        # get UNIT
         if self.degRDB.isChecked():
             self.parameters["unit"] = "DEG"
-            # print(self.parameters)
         elif self.radRDB.isChecked():
             self.parameters["unit"] = "RAD"
-            # print(self.parameters)
         else:
             self.parameters.clear()
 
 
 class PlotDialog(QWidget):
     def __init__(self, df, title, unit, parent=None):
+        # parent function
         super().__init__(parent)
-        # self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
+
+        # styling
         self.setWindowTitle("Figure")
         self.setWindowIcon(QIcon("images/logo.svg"))
         self.setAttribute(Qt.WA_DeleteOnClose)
-        # self.setModal(False)
 
+        # create figure
         self.figure = Figure()
-
         ax = self.figure.add_subplot(111)
         ax.clear()
 
+        # plot data
         df.plot(kind="line", x=0, ax=ax)
         ax.set_ylabel(unit)
         ax.set_title(title)
 
+        # draw to qt
         self.canvas = FigureCanvasQTAgg(self.figure)
         self.canvas.draw()
 
+        # toolbar for options
         self.toolbar = NavigationToolbar2QT(self.canvas, self)
 
+        # organize layout
         layout = QVBoxLayout()
         layout.addWidget(self.toolbar)
         layout.addWidget(self.canvas)
         self.setLayout(layout)
-

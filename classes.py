@@ -154,6 +154,8 @@ class Ruler:
 
 
 class Logger:
+    """Logger class"""
+
     def __init__(self):
         self.log = []
 
