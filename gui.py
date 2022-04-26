@@ -35,6 +35,7 @@ from widgets import (
     RotationSettings,
     TrackingSettings,
     TrackingThread,
+    TrackingThreadV2,
     VideoLabel,
     ObjectListWidget,
     Ruler,
@@ -1894,7 +1895,7 @@ class VideoWidget(QWidget):
         self.mode = False
 
         # create tracking thread
-        self.tracker = TrackingThread(
+        self.tracker = TrackingThreadV2(
             self.objects_to_track,
             self.camera,
             self.section_start,
@@ -2025,7 +2026,6 @@ class VideoWidget(QWidget):
         """Helper function that saves rotation object"""
         self.rotations.append(rotation)
 
-
     def addRotation(self):
         """Add rotation object"""
 
@@ -2066,7 +2066,7 @@ class VideoWidget(QWidget):
                     self.rotLWG.addItem(str(R))
                     self.rotations.append(R)
                     self.exportDialog.add_rotation(str(R))
-        
+
         # delete setting dialog
         settings.deleteLater()
 
@@ -2082,7 +2082,7 @@ class VideoWidget(QWidget):
     def getPlotData(self, parameters):
         """Get data collected by the Export dialog and creates the plot or file"""
 
-        # chack mode
+        # check mode
         if not self.mode:
             return
 
@@ -2295,7 +2295,7 @@ if __name__ == "__main__":
     splash = QSplashScreen(QPixmap("images/logo.svg"))
     splash.show()
     App.processEvents()
-    
+
     # open application
     root = VideoWidget()
     root.show()
