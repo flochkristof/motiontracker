@@ -1,10 +1,6 @@
 from math import ceil
-from matplotlib.pyplot import yscale
 import numpy as np
-from scipy.ndimage import gaussian_filter1d
-from scipy.signal import savgol_filter
 import cv2
-from findiff import FinDiff
 import pynumdiff
 import pynumdiff.optimize
 
@@ -236,25 +232,6 @@ def list2np(data):
     x = np.asarray([p[0] for p in data])
     y = np.asarray([p[1] for p in data])
     result = np.zeros((len(x), 2))
-    result[:, 0] = x
-    result[:, 1] = y
-    return result
-
-
-def gaussian(data, window, sigma):
-    """Gaussian filter"""
-
-    # truncate
-    t = (((window - 1) / 2) - 0.5) / sigma
-
-    x = np.asarray([p[0] for p in data])
-    y = np.asarray([p[1] for p in data])
-
-    x = gaussian_filter1d(x, sigma=sigma, truncate=t, mode="nearest")
-    y = gaussian_filter1d(y, sigma=sigma, truncate=t, mode="nearest")
-
-    result = np.zeros((len(x), 2))
-
     result[:, 0] = x
     result[:, 1] = y
     return result

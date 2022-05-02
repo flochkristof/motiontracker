@@ -20,7 +20,6 @@ from PyQt5.QtWidgets import (
     QSplashScreen,
 )
 import cv2
-from pytest import param
 from widgets import *
 from math import floor, ceil
 from funcs import *
