@@ -176,6 +176,8 @@ class TrackingThread(QThread):
         self.is_running = False
 
     def run(self):
+        self.newObject.emit("Tracking objects...")
+
         # t0 = time.time()
         for j in range(len(self.objects_to_track)):
             M = self.objects_to_track[j]
@@ -367,6 +369,7 @@ class TrackingThreadV2(QThread):
 
     def run(self):
         # t0 = time.time()
+        self.newObject.emit("Tracking objects...")
 
         # reset previous data
         self.timestamp.clear()
@@ -852,6 +855,8 @@ class PostProcessSettings(QDialog):
 
         self.manSpecRDB = QRadioButton("Manually Specified")
         self.manSpecRDB.toggled.connect(self.modeUpdated)
+        
+
 
         # Paramters into Layout and list for control
         manSpecLayout = QVBoxLayout()
@@ -925,6 +930,9 @@ class PostProcessSettings(QDialog):
         Layout.addWidget(parametersGB)
         Layout.addWidget(calculateBTN)
         self.setLayout(Layout)
+
+        # default setting is the manually specified
+        self.manSpecRDB.setChecked(True)
 
     def algoFamilyUpdated(self):
         """Update the specific fillter combobox according to family"""

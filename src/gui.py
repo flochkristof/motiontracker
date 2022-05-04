@@ -482,6 +482,7 @@ class VideoWidget(QWidget):
         # to display existing rotation objects
         self.rotLWG = RotationListWidget()
         self.rotLWG.setObjectName("rot_list")
+        self.rotLWG.delete.connect(self.deleteRotation)
 
         # rotation layout & groupbox
         rotLayout = QVBoxLayout()
@@ -1543,6 +1544,9 @@ class VideoWidget(QWidget):
             (i for i, item in enumerate(self.objects_to_track) if item.name == name), -1
         )
 
+        if index==-1:
+            return
+
         # delete from list
         del self.objects_to_track[index]
 
@@ -2041,6 +2045,27 @@ class VideoWidget(QWidget):
     def saveRotation(self, rotation):
         """Helper function that saves rotation object"""
         self.rotations.append(rotation)
+
+    def deleteRotation(self, name):
+        # get the index of the object
+        index = next(
+            (i for i, item in enumerate(self.rotations) if item.__str__() == name), -1
+        )
+
+        if index==-1:
+            return
+
+        # delete from list
+        del self.rotations[index]
+
+        # delete from ListWidget
+        i = self.rotLWG.takeItem(index)
+        del i
+
+        # delete from export dialog
+        self.exportDialog.delete_rotation(name)
+
+
 
     def addRotation(self):
         """Add rotation object"""
