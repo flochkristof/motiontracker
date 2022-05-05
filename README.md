@@ -35,7 +35,7 @@ $ python main.py
 ### Download binaries
 - Download binaries extract it to your specified location
 - Open application with `Motion Tracker Beta.exe`
-### Download thex installer
+### Download the installer
 - Download and run the installer
 - Follow the given instructions
 - After successfull installation the software is accessible under the name `Motion Tracker Beta`
