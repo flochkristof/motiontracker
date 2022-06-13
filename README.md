@@ -28,9 +28,9 @@ The Graphical user interface was created with the [PyQt5](https://www.riverbankc
 ```
 $ pip install -r requirements.txt
 ```
-- Run `main.py`
+- Run `main_app.py`
 ```
-$ python main.py
+$ python main_app.py
 ```
 ### Download binaries
 - Download binaries extract it to your specified location
