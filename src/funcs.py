@@ -511,13 +511,13 @@ def differentiate(p, dt, parameters):
             (
                 ps,
                 v,
-            ) = pynumdiff.total_variation_regularization._total_variation_regularization.sliding_jerk(
+            ) = pynumdiff.total_variation_regularization._total_variation_regularization.jerk_sliding(
                 p, dt, parameters[2], parameters[3]
             )
             (
                 v,
                 a,
-            ) = pynumdiff.total_variation_regularization._total_variation_regularization.sliding_jerk(
+            ) = pynumdiff.total_variation_regularization._total_variation_regularization.jerk_sliding(
                 v, dt, parameters[2], parameters[3]
             )
             return True, ps, v, a

@@ -52,6 +52,10 @@ from matplotlib.figure import Figure
 
 import time  # only to measure performance
 
+MODE=True # disables/ enables the optimization based differentiation methods
+# True: python environment
+# False: complied exe
+
 
 class ExportingThread(QThread):
     """Thread responsible for exporting video with tracked objects displayed"""
@@ -720,10 +724,12 @@ class PostProcessSettings(QDialog):
             [
                 "Finite Difference",
                 "Smooth Finite Difference",
-                "Total Variation Regularization",
                 "Linear Models",
             ]
         )
+        if MODE:
+            self.diffFamilyCMB.addItem("Total Variation Regularization")
+
         self.diffFamilyCMB.currentTextChanged.connect(self.algoFamilyUpdated)
 
         # Finite difference for default
@@ -949,6 +955,14 @@ class PostProcessSettings(QDialog):
         # default setting is the manually specified
         self.manSpecRDB.setChecked(True)
 
+        if not MODE:
+            self.optRDB.setEnabled(False)
+            note=QLabel("The hyperparameter optimization is not available in the complied software. Run the source code in a Python enviroment to access this feature!")
+            note.setWordWrap(True)
+            note.setObjectName("note")
+            self.cutoffOptGB.setVisible(False)
+            optLayout.addWidget(note)
+
     def algoFamilyUpdated(self):
         """Update the specific fillter combobox according to family"""
         if self.diffFamilyCMB.currentText() == "Finite Difference":
@@ -977,7 +991,7 @@ class PostProcessSettings(QDialog):
             self.diffSpecCMB.addItems(
                 [
                     "Iterative Total Variation Regularization with Regularized Velocity",
-                    "Convex Total Variation Regularization With Regularized Velocity",
+                    "Convex Total Variation Regularization with Regularized Velocity",
                     "Convex Total Variation Regularization with Regularized Acceleration",
                     "Convex Total Variation Regularization with Regularized Jerk",
                     "Convex Total Variation Regularization with Sliding Jerk",
@@ -1006,9 +1020,10 @@ class PostProcessSettings(QDialog):
 
         # optimization based input data
         elif self.optRDB.isChecked():
-            self.cutoffOptGB.setEnabled(True)
-            for p in self.parameters_list:
-                p.setEnabled(False)
+            if MODE:
+                self.cutoffOptGB.setEnabled(True)
+                for p in self.parameters_list:
+                    p.setEnabled(False)
 
     def diffSpecUpdated(self):
         """Reorganize input fields based on selected algorithm"""
@@ -1151,6 +1166,8 @@ class PostProcessSettings(QDialog):
             # cutom
             self.cutoffGB.setVisible(True)
             self.noInputSpecLBL.setVisible(False)
+        if not MODE:
+            self.cutoffOptGB.setVisible(False)
 
     def collectParameters(self):
         """Collects the needed parameters of the selected differentiation algoritms"""
@@ -1244,6 +1261,7 @@ class PostProcessSettings(QDialog):
                 "Convex Total Variation Regularization with Regularized Acceleration",
                 "Convex Total Variation Regularization with Regularized Jerk",
             }:
+                print("button pressed")
                 if self.regParLNE.text != "":
                     return (
                         False,
@@ -1252,6 +1270,7 @@ class PostProcessSettings(QDialog):
                         {"solver": "CVXOPT"},
                     )
                 else:
+                    print("regpar invalid")
                     return None
             elif (
                 algo
@@ -1653,7 +1672,7 @@ class PostProcesserThread(QThread):
                 M.acceleration = np.zeros((len(ax), 2))
                 M.acceleration[:, 0] = ax
                 M.acceleration[:, 1] = ay
-            self.success.emit()
+                self.success.emit()
         else:
             # here objetcts to track means only a single rotation object
             r = self.objects_to_track.rotation
@@ -1674,7 +1693,7 @@ class PostProcesserThread(QThread):
             self.objects_to_track.rotation = rs
             self.objects_to_track.ang_velocity = ang_v
             self.objects_to_track.ang_acceleration = ang_a
-        self.success.emit()
+            self.success.emit()
 
 
 class ExportDialog(QDialog):

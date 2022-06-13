@@ -35,6 +35,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
     font-weight: bold;
 }
 
+.QLabel#note {
+    font-weight: bold;
+}
+
 .QPushButton {
     color: #ffffff;
     border-radius: 10px;
@@ -43,7 +47,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
     border-color: #ffffff;
     background-color: #919191;
     font-weight: bold;
-    min-width: 60px;
     height: 20px;
     min-width: 200px;
 }
