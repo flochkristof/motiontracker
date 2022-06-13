@@ -9,3 +9,5 @@ __pycache__
 player.py
 20220109_173414000_iOS.MOV
 debug.log
+dist
+build
