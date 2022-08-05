@@ -41,651 +41,17 @@ from PyQt5.QtGui import (
     QDoubleValidator,
     QMovie,
 )
-from PyQt5.QtCore import QThread, Qt, pyqtSignal
-import math
-import cv2
-import numpy as np
-from funcs import *
-from classes import *
+from PyQt5.QtCore import Qt, pyqtSignal
+from MotionTrackerBeta.functions.helper import *
+from MotionTrackerBeta.classes.classes import *
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg, NavigationToolbar2QT
 from matplotlib.figure import Figure
+import os
 
-import time  # only to measure performance
 
 MODE=True # disables/ enables the optimization based differentiation methods
 # True: python environment
 # False: complied exe
-
-
-class ExportingThread(QThread):
-    """Thread responsible for exporting video with tracked objects displayed"""
-
-    # create signals
-    progressChanged = pyqtSignal(int)
-    success = pyqtSignal()
-    error_occured = pyqtSignal(str)
-
-    def __init__(
-        self,
-        camera,
-        objects_to_track,
-        start,
-        stop,
-        filename,
-        fps,
-        box_bool,
-        point_bool,
-        trajectory_lenght,
-    ):
-        """Initialization"""
-        self.camera = camera
-        self.objects = objects_to_track
-        self.section_start = start
-        self.section_stop = stop
-        self.filename = filename
-        self.fps = fps
-        self.is_running = True
-        self.box_bool = box_bool
-        self.point_bool = point_bool
-        self.trajectory_length = trajectory_lenght
-
-        # call parent function
-        super(ExportingThread, self).__init__()
-
-    def cancel(self):
-        """Stops the calculation, exits the thread"""
-        self.is_running = False
-
-    def run(self):
-        """Runs the exporting algorithm algoritm"""
-
-        # initialize writer
-        h = int(self.camera.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        w = int(self.camera.get(cv2.CAP_PROP_FRAME_WIDTH))
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        writer = cv2.VideoWriter(self.filename, fourcc, self.fps, (w, h))
-
-        # goto start
-        self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start)
-
-        # export frame by frame
-        for i in range(int(self.section_stop - self.section_start)):
-
-            # get position
-            pos = self.camera.get(cv2.CAP_PROP_POS_FRAMES)
-
-            # read frame
-            ret, frame = self.camera.read()
-
-            # stop in case of error
-            if not ret:
-                self.is_running = False
-                self.error_occured.emit("Unable to read video frame!")
-                break
-
-            # display objects
-            frame = display_objects(
-                frame,
-                pos,
-                self.section_start,
-                self.section_stop,
-                self.objects,
-                self.box_bool,
-                self.point_bool,
-                self.trajectory_length,
-            )
-
-            # write frame to file
-            writer.write(frame)
-
-            # update progress
-            self.progressChanged.emit(
-                int(pos / (self.section_stop - self.section_start) * 100)
-            )
-
-        if self.is_running:
-            # emit signal
-            self.success.emit()
-
-
-class TrackingThread(QThread):
-    """Thread responsible for running the tracking algorithms"""
-
-    # create signals
-    progressChanged = pyqtSignal(int)
-    newObject = pyqtSignal(str)
-    success = pyqtSignal()
-    rotation_calculated = pyqtSignal(Rotation)
-    error_occured = pyqtSignal(str)
-
-    def __init__(
-        self,
-        objects_to_track,
-        camera,
-        start,
-        stop,
-        tracker_type,
-        size,
-        fps,
-        timestamp,
-        roi_rect,
-    ):
-        """Intitialization"""
-        self.objects_to_track = objects_to_track
-        self.camera = camera
-        self.section_start = start
-        self.section_stop = stop
-        self.tracker_type = tracker_type
-        self.timestamp = timestamp
-        self.roi_rect = roi_rect
-        self.size = size
-        self.fps = fps
-        self.progress = "0"
-        self.is_running = True
-        if roi_rect is None:
-            self.roi_rect = (0, 0)
-        else:
-            self.roi_rect = roi_rect
-
-        # call parent function
-        super(TrackingThread, self).__init__()
-
-    def cancel(self):
-        """Stops the """
-        self.is_running = False
-
-    def run(self):
-        self.newObject.emit("Tracking objects...")
-
-        # t0 = time.time()
-        for j in range(len(self.objects_to_track)):
-            M = self.objects_to_track[j]
-
-            # emit the name of the tracked object
-            self.newObject.emit("Tracking object: " + M.name + "...")
-
-            # reset previous data
-            M.reset_data()
-            if j == 0:
-                self.timestamp.clear()
-
-            # creating the tracker
-            if self.tracker_type == "BOOSTING":
-                tracker = cv2.legacy.TrackerBoosting_create()
-            if self.tracker_type == "MIL":
-                tracker = cv2.legacy.TrackerMIL_create()
-            if self.tracker_type == "KCF":
-                tracker = cv2.TrackerKCF_create()
-            if self.tracker_type == "TLD":
-                tracker = cv2.legacy.TrackerTLD_create()
-            if self.tracker_type == "MEDIANFLOW":
-                tracker = cv2.legacy.TrackerMedianFlow_create()
-            # if self.tracker_type == "GOTURN":
-            #    tracker = cv2.TrackerGOTURN_create()
-            if self.tracker_type == "MOSSE":
-                tracker = cv2.legacy.TrackerMOSSE_create()
-            if self.tracker_type == "CSRT":
-                tracker = cv2.TrackerCSRT_create()
-
-            # set camera to start frame, get the fps
-            self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start - 1)
-
-            # initialize tracker
-            ret, frame = self.camera.read()
-            if not ret:
-                self.error_occured.emit("Unable to read video frame!")
-                return
-
-            # crop roi if provided
-            if len(self.roi_rect) == 4:
-                frame = crop_roi(frame, self.roi_rect)
-
-            # initialize cv2 tracker
-            try:
-                tracker.init(frame, rect2cropped(M.rectangle, self.roi_rect))
-            except:
-                # handle error, stop the thread emit signal
-                self.is_running = False
-                self.error_occured.emit("Unable to initialize the tracker!")
-                break
-
-            # add to path list
-            M.rectangle_path.append(M.rectangle)
-            M.point_path.append(M.point)
-
-            # record timestamp only for the first tracking
-            if j == 0:
-                self.timestamp.append(0)
-
-            # for the calculation of the point
-            dy = (M.point[1] - M.rectangle[1]) / M.rectangle[3]
-            dx = (M.point[0] - M.rectangle[0]) / M.rectangle[2]
-
-            # for zoom
-            w0 = M.rectangle[2]
-            h0 = M.rectangle[3]
-
-            # tracking
-            for i in range(int(self.section_stop - self.section_start)):
-                # read the next frame
-                ret, frame = self.camera.read()
-
-                # handle errors
-                if not ret:
-                    self.error_occured.emit("Unable to read video frame!")
-                    self.is_running = False
-                    break
-
-                # crop if roi provided
-                if len(self.roi_rect) == 4:
-                    frame = crop_roi(frame, self.roi_rect)
-
-                # update the tracker
-                try:
-                    ret, roi_box = tracker.update(frame)
-                except Exception as e:
-                    self.error_occured.emit(f"Tracking failed!\n{e}")
-                    self.is_running = False
-                    break
-
-                if ret:  # tracking duccessfull
-
-                    # traditional tracking
-                    x, y, w, h = roi_box
-                    M.rectangle_path.append(
-                        (self.roi_rect[0] + x, self.roi_rect[1] + y, w, h)
-                    )
-
-                    # M.rectangle_path.append(roi_box)
-                    M.point_path.append(
-                        (
-                            self.roi_rect[0] + roi_box[0] + dx * roi_box[2],
-                            self.roi_rect[1] + roi_box[1] + dy * roi_box[3],
-                        )
-                    )
-
-                    # change of size
-                    if self.size:
-                        M.size_change.append((roi_box[2] / w0 + roi_box[3] / h0) / 2)
-
-                    # log timestamps
-                    if j == 0:
-                        self.timestamp.append((i + 1) / self.fps)
-
-                    # progress
-                    self.progress = math.ceil(
-                        i / (self.section_stop - self.section_start) * 100
-                    )
-                    self.progressChanged.emit(self.progress)
-                else:
-                    # handle errors
-                    self.error_occured.emit(
-                        "Tracking failed!\n Tracker returned with failure!"
-                    )
-                    self.is_running = False
-
-                if not self.is_running:
-                    # reset path
-                    M.rectangle_path = []
-                    break
-
-            if not self.is_running:
-                break
-        # set camera pos to start
-        self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start)
-
-        # emit success signal
-        if self.is_running:
-            # print(f"Finished in {time.time()-t0}")
-            self.success.emit()
-
-
-class TrackingThreadV2(QThread):
-    """Thread responsible for running the tracking algorithms"""
-
-    # create signals
-    progressChanged = pyqtSignal(int)
-    newObject = pyqtSignal(str)
-    success = pyqtSignal()
-    rotation_calculated = pyqtSignal(Rotation)
-    error_occured = pyqtSignal(str)
-
-    def __init__(
-        self,
-        objects_to_track,
-        camera,
-        start,
-        stop,
-        tracker_type,
-        size,
-        fps,
-        timestamp,
-        roi_rect,
-    ):
-        """Intitialization"""
-        self.objects_to_track = objects_to_track
-        self.camera = camera
-        self.section_start = start
-        self.section_stop = stop
-        self.tracker_type = tracker_type
-        self.timestamp = timestamp
-        self.roi_rect = roi_rect
-        self.size = size
-        self.fps = fps
-        self.progress = "0"
-        self.is_running = True
-        if roi_rect is None:
-            self.roi_rect = (0, 0)
-        else:
-            self.roi_rect = roi_rect
-
-        # call parent function
-        super(TrackingThreadV2, self).__init__()
-
-    def cancel(self):
-        """Stops the tracking"""
-        self.is_running = False
-
-    def run(self):
-        # t0 = time.time()
-        self.newObject.emit("Tracking objects...")
-
-        # reset previous data
-        self.timestamp.clear()
-
-        # set camera to start frame, read it
-        self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start - 1)
-
-        # initialize tracker
-        ret, frame = self.camera.read()
-
-        # check errors
-        if not ret:
-            self.error_occured.emit("Unable to read video frame!")
-            return
-
-        # crop roi if provided
-        if len(self.roi_rect) == 4:
-            frame = crop_roi(frame, self.roi_rect)
-
-        # creating tracker objects, adding them into list
-        trackers = []
-        for M in self.objects_to_track:
-            # reset data
-            M.reset_data()
-
-            # creating the tracker
-            if self.tracker_type == "BOOSTING":
-                tracker = cv2.legacy.TrackerBoosting_create()
-            if self.tracker_type == "MIL":
-                tracker = cv2.legacy.TrackerMIL_create()
-            if self.tracker_type == "KCF":
-                tracker = cv2.TrackerKCF_create()
-            if self.tracker_type == "TLD":
-                tracker = cv2.legacy.TrackerTLD_create()
-            if self.tracker_type == "MEDIANFLOW":
-                tracker = cv2.legacy.TrackerMedianFlow_create()
-            # if self.tracker_type == "GOTURN":
-            #    tracker = cv2.TrackerGOTURN_create()
-            if self.tracker_type == "MOSSE":
-                tracker = cv2.legacy.TrackerMOSSE_create()
-            if self.tracker_type == "CSRT":
-                tracker = cv2.TrackerCSRT_create()
-
-            # initialize cv2 with starting frame
-            try:
-                tracker.init(frame, rect2cropped(M.rectangle, self.roi_rect))
-            except:
-                # handle error, stop the thread emit signal
-                self.is_running = False
-                self.error_occured.emit("Unable to initialize the tracker!")
-                return
-
-            # store data
-            M.rectangle_path.append(M.rectangle)
-            M.point_path.append(M.point)
-
-            # for zoom
-            w0 = M.rectangle[2]
-            h0 = M.rectangle[3]
-
-            # size change if required
-            if self.size:
-                M.size_change.append((M.rectangle[2] / w0 + M.rectangle[3] / h0) / 2)
-
-            # add tracker to list
-            trackers.append(tracker)
-
-        # store timestamp
-        self.timestamp.append(0)
-
-        # tracking loop
-        for j in range(int(self.section_stop - self.section_start)):
-            # read frame
-            ret, frame = self.camera.read()
-
-            # check for errors
-            if not ret:
-                return
-
-            # crop roi if provided
-            if len(self.roi_rect) == 4:
-                frame = crop_roi(frame, self.roi_rect)
-
-            # update trackers
-            for i in range(len(trackers)):
-                try:
-                    ret, roi_box = trackers[i].update(frame)
-                except Exception as e:
-                    self.error_occured.emit(f"Tracking failed!\n{e}")
-                    self.is_running = False
-                    return
-
-                # successfull tracking
-                if ret:
-                    # traditional tracking
-                    x, y, w, h = roi_box
-
-                    # for the calculation of the point
-                    dy = (M.point[1] - M.rectangle[1]) / M.rectangle[3]
-                    dx = (M.point[0] - M.rectangle[0]) / M.rectangle[2]
-
-                    # for zoom
-                    w0 = M.rectangle[2]
-                    h0 = M.rectangle[3]
-
-                    self.objects_to_track[i].rectangle_path.append(
-                        (self.roi_rect[0] + x, self.roi_rect[1] + y, w, h)
-                    )
-                    # M.rectangle_path.append(roi_box)
-                    self.objects_to_track[i].point_path.append(
-                        (
-                            self.roi_rect[0] + roi_box[0] + dx * roi_box[2],
-                            self.roi_rect[1] + roi_box[1] + dy * roi_box[3],
-                        )
-                    )
-                    # change of size
-                    if self.size:
-                        self.objects_to_track[i].size_change.append(
-                            (roi_box[2] / w0 + roi_box[3] / h0) / 2
-                        )
-                else:
-                    # handle errors
-                    self.error_occured.emit(
-                        "Tracking failed!\n Tracker returned with failure!"
-                    )
-                    self.is_running = False
-                    return
-                if not self.is_running:
-                    break
-
-            # timestamp
-            self.timestamp.append((j + 1) / self.fps)
-
-            # progress
-            self.progress = math.ceil(
-                j / (self.section_stop - self.section_start) * 100
-            )
-            self.progressChanged.emit(self.progress)
-
-            # break loop if cancelled
-            if not self.is_running:
-                break
-
-        # set camera position to start
-        self.camera.set(cv2.CAP_PROP_POS_FRAMES, self.section_start)
-
-        # emit success signal
-        if self.is_running:
-            # print(f"Finished in {time.time()-t0}")
-            self.success.emit()
-
-
-class VideoLabel(QLabel):
-    """Label to display the frames from OpenCV"""
-
-    # create signals
-    press = pyqtSignal(float, float)
-    moving = pyqtSignal(float, float)
-    release = pyqtSignal(float, float)
-    wheel = pyqtSignal(float)
-
-    def __init__(self, parent=None):
-        """Intitialization"""
-        self.press_pos = None
-        self.current_pos = None
-        super(VideoLabel, self).__init__(parent)
-
-    def wheelEvent(self, a0: QWheelEvent):
-        """Handles wheel event, emits signal with zoom parameter"""
-        if a0.angleDelta().y() > 0:
-            self.wheel.emit(-0.1)
-        else:
-            self.wheel.emit(0.1)
-        return super().wheelEvent(a0)
-
-    def mousePressEvent(self, ev: QMouseEvent):
-        """Handles mouse press event, emits coordinates"""
-        x_label, y_label, = ev.x(), ev.y()
-
-        if self.pixmap():
-            label_size = self.size()
-            pixmap_size = self.pixmap().size()
-            width = pixmap_size.width()
-            height = pixmap_size.height()
-
-            x_0 = int((label_size.width() - width) / 2)
-            y_0 = int((label_size.height() - height) / 2)
-
-            if (
-                x_label >= x_0
-                and x_label < (x_0 + width)
-                and y_label >= y_0
-                and y_label < (y_0 + height)
-            ):
-                x_rel = (x_label - x_0 - width / 2) / width
-                y_rel = (y_label - y_0 - height / 2) / height
-                self.press_pos = (x_rel, y_rel)
-                self.press.emit(x_rel, y_rel)
-        super().mousePressEvent(ev)
-
-    def mouseMoveEvent(self, ev: QMouseEvent):
-        """Handles mouse movement, emits coordinates"""
-        x_label, y_label, = ev.x(), ev.y()
-
-        if self.pixmap():
-            label_size = self.size()
-            pixmap_size = self.pixmap().size()
-            width = pixmap_size.width()
-            height = pixmap_size.height()
-
-            x_0 = int((label_size.width() - width) / 2)
-            y_0 = int((label_size.height() - height) / 2)
-
-            if (
-                x_label >= x_0
-                and x_label < (x_0 + width)
-                and y_label >= y_0
-                and y_label < (y_0 + height)
-            ):
-                x_rel = (x_label - x_0 - width / 2) / width
-                y_rel = (y_label - y_0 - height / 2) / height
-                self.moving.emit(x_rel, y_rel)
-                self.current_pos = (x_rel, y_rel)
-        super().mousePressEvent(ev)
-
-    def mouseReleaseEvent(self, ev: QMouseEvent):
-        """Handles mouse release, emits coordinates"""
-        x_label, y_label, = ev.x(), ev.y()
-
-        if self.pixmap():
-            label_size = self.size()
-            pixmap_size = self.pixmap().size()
-            width = pixmap_size.width()
-            height = pixmap_size.height()
-
-            x_0 = int((label_size.width() - width) / 2)
-            y_0 = int((label_size.height() - height) / 2)
-
-            if (
-                x_label >= x_0
-                and x_label < (x_0 + width)
-                and y_label >= y_0
-                and y_label < (y_0 + height)
-            ):
-                x_rel = (x_label - x_0 - width / 2) / width
-                y_rel = (y_label - y_0 - height / 2) / height
-                self.release.emit(x_rel, y_rel)
-        super().mousePressEvent(ev)
-
-
-class ObjectListWidget(QListWidget):
-    """Widget that displays the objects created by the user"""
-
-    # create signals
-    delete = pyqtSignal(str)
-    changeVisibility = pyqtSignal(str)
-
-    def __init__(self, parent=None):
-        """Initialize"""
-
-        # call parent function
-        super(ObjectListWidget, self).__init__(parent)
-
-        # connect signal
-        self.itemClicked.connect(self.listItemMenu)
-
-    def listItemMenu(self, item):
-        """Opens the menu"""
-        menu = QMenu()
-        menu.addAction("Show/Hide", lambda: self.changeVisibility.emit(item.text()))
-        menu.addSeparator()
-        menu.addAction("Delete", lambda: self.delete.emit(item.text()))
-        menu.exec_(QCursor.pos())
-        menu.deleteLater()
-
-
-class RotationListWidget(QListWidget):
-    """Widget that displays the created rotations"""
-
-    # create signal
-    delete = pyqtSignal(str)
-
-    def __init__(self, parent=None):
-        """Initialize"""
-
-        # call parent function
-        super(RotationListWidget, self).__init__(parent)
-
-        # connect signal
-        self.itemClicked.connect(self.listItemMenu)
-
-    def listItemMenu(self, item):
-        """Open menu"""
-        menu = QMenu()
-        menu.addAction("Delete", lambda: self.delete.emit(item.text()))
-        menu.exec_(QCursor.pos())
-        menu.deleteLater()
 
 
 class PostProcessSettings(QDialog):
@@ -704,9 +70,9 @@ class PostProcessSettings(QDialog):
         self.setWindowTitle("Post-processing settings")
         self.setModal(True)
         self.setObjectName("postprocess_window")
-        with open("style/postprocess.qss", "r") as style:
+        with open(os.path.dirname(os.path.dirname(__file__))+"/style/postprocess.qss", "r") as style:
             self.setStyleSheet(style.read())
-        self.setWindowIcon(QIcon("images/logo.svg"))
+        self.setWindowIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/logo.svg"))
         self.setMinimumWidth(600)
 
         # data output
@@ -783,7 +149,7 @@ class PostProcessSettings(QDialog):
         # Iterations
         iterationsLBL = QLabel("Iterations:")
         self.iterationsLNE = QLineEdit()
-        self.iterationsLNE.setValidator(QIntValidator(0, 50))
+        self.iterationsLNE.setValidator(QIntValidator(0, 1000))
         self.iterationsLNE.setFixedWidth(100)
 
         iterationsLayout = QHBoxLayout()
@@ -1372,9 +738,9 @@ class TrackingSettings(QDialog):
         self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
         self.setWindowTitle("Tracking settings")
         self.setModal(True)
-        with open("style/tracking.qss", "r") as style:
+        with open(os.path.dirname(os.path.dirname(__file__))+"/style/tracking.qss", "r") as style:
             self.setStyleSheet(style.read())
-        self.setWindowIcon(QIcon("images/logo.svg"))
+        self.setWindowIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/logo.svg"))
         self.setObjectName("tracker_window")
         self.setFixedSize(270, 200)
 
@@ -1455,9 +821,9 @@ class RotationSettings(QDialog):
         # styling
         self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
         self.setWindowTitle("Rotation settings")
-        self.setWindowIcon(QIcon("images/logo.svg"))
+        self.setWindowIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/logo.svg"))
         self.setObjectName("rotation")
-        with open("style/rotation.qss", "r") as style:
+        with open(os.path.dirname(os.path.dirname(__file__))+"/style/rotation.qss", "r") as style:
             self.setStyleSheet(style.read())
         self.setModal(True)
         # self.setAttribute(Qt.WA_DeleteOnClose) TODO
@@ -1505,8 +871,8 @@ class TrackingProgress(QDialog):
         # styling
         self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
         self.setWindowTitle("Calculation in progress...")
-        self.setWindowIcon(QIcon("images/logo.svg"))
-        with open("style/progress.qss", "r") as style:
+        self.setWindowIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/logo.svg"))
+        with open(os.path.dirname(os.path.dirname(__file__))+"/style/progress.qss", "r") as style:
             self.setStyleSheet(style.read())
         self.setObjectName("progress")
         self.setModal(True)
@@ -1547,8 +913,8 @@ class CalculationProgress(QDialog):
         # styling
         self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
         self.setWindowTitle("Calculation in progress...")
-        self.setWindowIcon(QIcon("images/logo.svg"))
-        with open("style/progress.qss", "r") as style:
+        self.setWindowIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/logo.svg"))
+        with open(os.path.dirname(os.path.dirname(__file__))+"/style/progress.qss", "r") as style:
             self.setStyleSheet(style.read())
         self.setObjectName("progress_spinner")
         self.setModal(True)
@@ -1564,7 +930,7 @@ class CalculationProgress(QDialog):
         self.label.setStyleSheet("text-align: center;")
         cancelProgressBTN = QPushButton("Cancel")
         cancelProgressBTN.clicked.connect(self.rejected)
-        self.movie = QMovie("images/loader.gif")
+        self.movie = QMovie(os.path.dirname(os.path.dirname(__file__))+"/images/loader.gif")
         self.movieLBL.setMovie(self.movie)
         self.movieLBL.setStyleSheet("text-align: center;")
         vLayout.addWidget(self.label, Qt.AlignCenter)
@@ -1585,117 +951,6 @@ class CalculationProgress(QDialog):
         return super().accept()
 
 
-class PostProcesserThread(QThread):
-    """Thread responsible for the post processing of the data collected by the trackers"""
-
-    progressChanged = pyqtSignal(int)
-    newObject = pyqtSignal(str)
-    success = pyqtSignal()
-    error_occured = pyqtSignal(str)
-
-    def __init__(self, mode, objects_to_track, dt, parameters):
-        """Initialization"""
-        self.objects_to_track = objects_to_track
-        self.dt = dt
-        self.parameters = parameters
-        self.progress = 0
-        self.is_running = True
-        self.mode = mode
-        super(PostProcesserThread, self).__init__()
-
-    def cancel(self):
-        """Stops calculations exits the thread"""
-        self.is_running = False
-
-    def run(self):
-        """Runs the post-processing code"""
-        if self.mode:
-            if self.parameters is None:
-                self.error_occured.emit("Error: Invalid parameters!")
-                return
-
-            for i in range(len(self.objects_to_track)):
-                M = self.objects_to_track[i]
-
-                M.reset_output()
-
-                x = np.array([p[0] for p in M.point_path])
-                y = np.array([p[1] for p in M.point_path])
-
-                # X coordinate
-                if self.parameters[0]:
-                    ret, xs, vx, ax = optimize_and_differentiate(
-                        x, self.dt, self.parameters
-                    )
-                else:
-                    ret, xs, vx, ax = differentiate(x, self.dt, self.parameters)
-
-                if not ret:
-                    self.error_occured.emit(
-                        "Error: A porblem occured while calculating the derivative!"
-                    )
-                    self.is_running = False
-                    break
-                self.progressChanged.emit(
-                    int(100 / (2 * len(self.objects_to_track)) * (i + 1))
-                )
-
-                # Y coordinate
-                if self.parameters[0]:
-                    ret, ys, vy, ay = optimize_and_differentiate(
-                        y, self.dt, self.parameters
-                    )
-                else:
-                    ret, ys, vy, ay = differentiate(y, self.dt, self.parameters)
-
-                if not ret:
-                    self.error_occured.emit(
-                        "Error: A porblem occupred while calculating the derivative!"
-                    )
-                    self.is_running = False
-                    break
-                self.progressChanged.emit(
-                    int(100 / len(self.objects_to_track) * (i + 1))
-                )
-
-                # Smoothed postion
-                M.position = np.zeros((len(xs), 2))
-                M.position[:, 0] = xs
-                M.position[:, 1] = ys
-
-                # Smoothed postion
-                M.velocity = np.zeros((len(vx), 2))
-                M.velocity[:, 0] = vx
-                M.velocity[:, 1] = vy
-
-                # Smoothed postion
-                M.acceleration = np.zeros((len(ax), 2))
-                M.acceleration[:, 0] = ax
-                M.acceleration[:, 1] = ay
-                self.success.emit()
-        else:
-            # here objetcts to track means only a single rotation object
-            r = self.objects_to_track.rotation
-            if self.parameters[0]:
-                ret, rs, ang_v, ang_a = optimize_and_differentiate(
-                    r, self.dt, self.parameters
-                )
-            else:
-                ret, rs, ang_v, ang_a = differentiate(r, self.dt, self.parameters)
-            if not ret:
-                self.error_occured.emit(
-                    "Error: A porblem occured while calculating the derivative!"
-                )
-                self.is_running = False
-                return
-
-            # Smoothed postion
-            self.objects_to_track.rotation = rs
-            self.objects_to_track.ang_velocity = ang_v
-            self.objects_to_track.ang_acceleration = ang_a
-            self.success.emit()
-
-
 class ExportDialog(QDialog):
     """Handles the exporting of the data collected by the trackers"""
 
@@ -1707,9 +962,9 @@ class ExportDialog(QDialog):
 
         # styling
         self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
-        self.setWindowIcon(QIcon("images/logo.svg"))
+        self.setWindowIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/logo.svg"))
         self.setObjectName("export_dialog")
-        with open("style/export.qss", "r") as style:
+        with open(os.path.dirname(os.path.dirname(__file__))+"/style/export.qss", "r") as style:
             self.setStyleSheet(style.read())
         self.setWindowTitle("Export options")
         self.setModal(False)
@@ -2219,7 +1474,7 @@ class PlotDialog(QWidget):
 
         # styling
         self.setWindowTitle("Figure")
-        self.setWindowIcon(QIcon("images/logo.svg"))
+        self.setWindowIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/logo.svg"))
         self.setAttribute(Qt.WA_DeleteOnClose)
 
         # create figure

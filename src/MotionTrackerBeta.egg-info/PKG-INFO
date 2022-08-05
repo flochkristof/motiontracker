@@ -1,3 +1,23 @@
+Metadata-Version: 2.1
+Name: MotionTrackerBeta
+Version: 1.0.0
+Summary: Motion Tracker Beta: A GUI based open-source motion tracking application
+Home-page: https://github.com/flochkristof/motiontracker
+Author: K. Floch
+Author-email: kristof.floch@gmail.com
+License: GPL-3.0
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Operating System :: Microsoft :: Windows :: Windows 10
+Classifier: Operating System :: MacOS
+Classifier: Topic :: Scientific/Engineering :: Image Processing
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.10
+Requires-Python: >=3.4
+Description-Content-Type: text/markdown
+
 <p align="center">
   <img src="https://user-images.githubusercontent.com/65981382/166214135-47ecd327-cba8-47c0-a034-9f6f14b777ce.png" alt="Motion Tracker Beta"/>
 </p>

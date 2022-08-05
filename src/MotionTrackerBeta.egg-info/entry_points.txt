@@ -1,0 +1,3 @@
+[console_scripts]
+MotionTracker = MotionTrackerBeta.main:MotionTracker
+MotionTrackerBeta = MotionTrackerBeta.main:MotionTracker

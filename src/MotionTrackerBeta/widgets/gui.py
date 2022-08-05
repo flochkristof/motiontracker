@@ -16,7 +16,6 @@
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import (
-    QApplication,
     QLabel,
     QLineEdit,
     QSizePolicy,
@@ -32,14 +31,28 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QCheckBox,
     QComboBox,
-    QSplashScreen,
 )
-import cv2
-from widgets import *
+
+from MotionTrackerBeta.widgets.dialogs import *
+from MotionTrackerBeta.widgets.lists import *
+from MotionTrackerBeta.widgets.video import VideoLabel
+from MotionTrackerBeta.widgets.trackers import TrackingThreadV2
+from MotionTrackerBeta.widgets.process import PostProcesserThread
+from MotionTrackerBeta.widgets.export import ExportingThread
+
+from MotionTrackerBeta.functions.display import display_objects, draw_grid
+from MotionTrackerBeta.functions.transforms import *
+from MotionTrackerBeta.functions.helper import *
+
+from MotionTrackerBeta.classes.classes import *
+
 from math import floor, ceil
-from funcs import *
-from classes import *
+
+import os
+
 import pandas as pd
+
+import cv2
 
 
 class VideoWidget(QWidget):
@@ -87,9 +100,9 @@ class VideoWidget(QWidget):
 
         # Styling
         self.setObjectName("main_window")
-        with open("style/main.qss", "r") as style:
+        with open(os.path.dirname(os.path.dirname(__file__))+"/style/main.qss", "r") as style:
             self.setStyleSheet(style.read())
-        self.setWindowIcon(QIcon("images/logo.svg"))
+        self.setWindowIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/logo.svg"))
         self.setWindowTitle("Motion Tracker Beta")
 
         # Video open button
@@ -222,37 +235,37 @@ class VideoWidget(QWidget):
         # Video player controller buttons
         self.StartPauseBTN = QPushButton()
         self.StartPauseBTN.setCheckable(True)
-        self.StartPauseBTN.setIcon(QIcon("images/play.svg"))
+        self.StartPauseBTN.setIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/play.svg"))
         self.StartPauseBTN.setMinimumSize(QSize(40, 40))
         self.StartPauseBTN.clicked.connect(self.StartPauseVideo)
 
         # Stops the video, releases the camera, resets everything
         StopBTN = QPushButton()
-        StopBTN.setIcon(QIcon("images/stop.svg"))
+        StopBTN.setIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/stop.svg"))
         StopBTN.setMinimumSize(QSize(40, 40))
         StopBTN.clicked.connect(self.closeVideo)
 
         # Jumping forward in the video
         self.ForwardBTN = QPushButton()
-        self.ForwardBTN.setIcon(QIcon("images/forward.svg"))
+        self.ForwardBTN.setIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/forward.svg"))
         self.ForwardBTN.setMinimumSize(QSize(40, 40))
         self.ForwardBTN.clicked.connect(self.JumpForward)
 
         # jumping backward in the video
         self.BackwardBTN = QPushButton()
-        self.BackwardBTN.setIcon(QIcon("images/backward.svg"))
+        self.BackwardBTN.setIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/backward.svg"))
         self.BackwardBTN.setMinimumSize(QSize(40, 40))
         self.BackwardBTN.clicked.connect(self.JumpBackward)
 
         # jump to the first frqme of the video
         self.StartBTN = QPushButton()
-        self.StartBTN.setIcon(QIcon("images/start.svg"))
+        self.StartBTN.setIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/start.svg"))
         self.StartBTN.setMinimumSize(QSize(40, 40))
         self.StartBTN.clicked.connect(self.JumpStart)
 
         # jump to the last frame of the video
         self.EndBTN = QPushButton()
-        self.EndBTN.setIcon(QIcon("images/end.svg"))
+        self.EndBTN.setIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/end.svg"))
         self.EndBTN.setMinimumSize(QSize(40, 40))
         self.EndBTN.clicked.connect(self.JumpEnd)
 
@@ -275,7 +288,7 @@ class VideoWidget(QWidget):
 
         # Zoom and move control buttons
         MoveUpBTN = QPushButton()
-        MoveUpBTN.setIcon(QIcon("images/up.svg"))
+        MoveUpBTN.setIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/up.svg"))
         MoveUpBTN.setFixedSize(QSize(40, 40))
         MoveUpBTN.setAutoRepeat(True)
         MoveUpBTN.setAutoRepeatDelay(10)
@@ -283,7 +296,7 @@ class VideoWidget(QWidget):
         MoveUpBTN.clicked.connect(lambda: self.changeYoffset(-1))
 
         MoveDownBTN = QPushButton()
-        MoveDownBTN.setIcon(QIcon("images/down.svg"))
+        MoveDownBTN.setIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/down.svg"))
         MoveDownBTN.setFixedSize(QSize(40, 40))
         MoveDownBTN.setAutoRepeat(True)
         MoveDownBTN.setAutoRepeatDelay(10)
@@ -291,7 +304,7 @@ class VideoWidget(QWidget):
         MoveDownBTN.clicked.connect(lambda: self.changeYoffset(1))
 
         MoveLeftBTN = QPushButton()
-        MoveLeftBTN.setIcon(QIcon("images/left.svg"))
+        MoveLeftBTN.setIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/left.svg"))
         MoveLeftBTN.setFixedSize(QSize(40, 40))
         MoveLeftBTN.setAutoRepeat(True)
         MoveLeftBTN.setAutoRepeatDelay(10)
@@ -299,7 +312,7 @@ class VideoWidget(QWidget):
         MoveLeftBTN.clicked.connect(lambda: self.changeXoffset(-1))
 
         MoveRightBTN = QPushButton()
-        MoveRightBTN.setIcon(QIcon("images/right.svg"))
+        MoveRightBTN.setIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/right.svg"))
         MoveRightBTN.setAutoRepeat(True)
         MoveRightBTN.setAutoRepeatDelay(10)
         MoveRightBTN.setAutoRepeatInterval(10)
@@ -308,12 +321,12 @@ class VideoWidget(QWidget):
 
         # Zoom In/Out
         ZoomInBTN = QPushButton()
-        ZoomInBTN.setIcon(QIcon("images/zoom-in.svg"))
+        ZoomInBTN.setIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/zoom-in.svg"))
         ZoomInBTN.setFixedSize(QSize(40, 70))
         ZoomInBTN.clicked.connect(lambda: self.changeZoom(-0.1))
 
         ZoomOutBTN = QPushButton()
-        ZoomOutBTN.setIcon(QIcon("images/zoom-out.svg"))
+        ZoomOutBTN.setIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/zoom-out.svg"))
         ZoomOutBTN.setFixedSize(QSize(40, 70))
         ZoomOutBTN.clicked.connect(lambda: self.changeZoom(0.1))
 
@@ -361,7 +374,7 @@ class VideoWidget(QWidget):
         self.VidLBL.setAlignment(Qt.AlignCenter)
         self.VidLBL.setMinimumSize(640, 480)
         self.VidLBL.setStyleSheet("background-color: #c9c9c9")
-        self.VidLBL.setPixmap(QPixmap("images/video.svg"))
+        self.VidLBL.setPixmap(QPixmap(os.path.dirname(os.path.dirname(__file__))+"/images/video.svg"))
 
         # Label for timestamp
         self.VidTimeLBL = QLabel()
@@ -675,7 +688,7 @@ class VideoWidget(QWidget):
         # reorganize layout
         self.PropGB.setVisible(False)
         self.VidTimeLBL.setText("-/-")
-        self.VidLBL.setPixmap(QPixmap("images/video.svg"))
+        self.VidLBL.setPixmap(QPixmap(os.path.dirname(__file__)+"/images/video.svg"))
         # disconnect any signal that may be connected with the VidLBL
         try:
             self.VidLBL.disconnect()
@@ -710,12 +723,12 @@ class VideoWidget(QWidget):
             self.timer.start(round(1000 / self.fps))
 
             # chnge icon
-            self.StartPauseBTN.setIcon(QIcon("images/pause.svg"))
+            self.StartPauseBTN.setIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/pause.svg"))
         else:
 
             # stop the timer and change the icon
             self.timer.stop()
-            self.StartPauseBTN.setIcon(QIcon("images/play.svg"))
+            self.StartPauseBTN.setIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/play.svg"))
 
     def nextFrame(self):
         """Loads and displays the next frame from the video feed"""
@@ -738,7 +751,7 @@ class VideoWidget(QWidget):
             if self.section_stop == pos:
                 self.timer.stop()
                 self.StartPauseBTN.setChecked(False)
-                self.StartPauseBTN.setIcon(QIcon("images/play.svg"))
+                self.StartPauseBTN.setIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/play.svg"))
                 return
 
         # Read and display frame
@@ -817,7 +830,7 @@ class VideoWidget(QWidget):
             # stop playing
             self.timer.stop()
             self.StartPauseBTN.setChecked(False)
-            self.StartPauseBTN.setIcon(QIcon("images/play.svg"))
+            self.StartPauseBTN.setIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/play.svg"))
 
     def ReloadCurrentFrame(self):
         """Reloads and displays the current frame"""
@@ -1952,9 +1965,9 @@ class VideoWidget(QWidget):
     def showErrorMessage(self, message):
         """Shows the given error message in a new dialog"""
         msg = QMessageBox()
-        with open("style/message.qss", "r") as style:
+        with open(os.path.dirname(os.path.dirname(__file__))+"/style/message.qss", "r") as style:
             msg.setStyleSheet(style.read())
-        msg.setWindowIcon(QIcon("images/logo.svg"))
+        msg.setWindowIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/logo.svg"))
         msg.setWindowTitle("Error occured!")
         msg.setText(message)
         msg.setIcon(QMessageBox.Warning)
@@ -1963,9 +1976,9 @@ class VideoWidget(QWidget):
     def showWarningMessage(self, message):
         """Shows the given warning message in a new dialog"""
         msg = QMessageBox()
-        with open("style/message.qss", "r") as style:
+        with open(os.path.dirname(os.path.dirname(__file__))+"/style/message.qss", "r") as style:
             msg.setStyleSheet(style.read())
-        msg.setWindowIcon(QIcon("images/logo.svg"))
+        msg.setWindowIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/logo.svg"))
         msg.setWindowTitle("Warning!")
         msg.setText(message)
         msg.setIcon(QMessageBox.Warning)

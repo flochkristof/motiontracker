@@ -177,4 +177,3 @@ class Logger:
 
     def log(self, text):
         self.log.append(text)
-
