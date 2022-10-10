@@ -1,9 +1,0 @@
-matplotlib==3.5.1
-scipy==1.8.0
-numpy==1.22.3
-opencv-contrib-python==4.5.5.64
-pynumdiff==0.1.2
-PyQt5==5.15.6
-cvxopt==1.3.0
-cvxpy==1.2.0
-pandas==1.4.2

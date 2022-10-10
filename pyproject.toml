@@ -1,0 +1,48 @@
+[tool.poetry]
+name = "MotionTrackerBeta"
+version = "0.1.0"
+description = "a GUI based open-source motion tracking application"
+authors = ["Kristof Floch <kristof.floch@gmail.com>"]
+maintainers = ["Kristof Floch <kristof.floch@gmail.com>"]
+license = "GPL-3.0"
+readme = "README.md"
+packages = [
+        {include="MotionTrackerBeta", from="src"}
+]
+
+homepage = "https://github.com/flochkristof/motiontracker"
+repository = "https://github.com/flochkristof/motiontracker"
+
+classifiers=[
+	'Development Status :: 5 - Production/Stable',
+	'Intended Audience :: Science/Research',
+	'License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)',  
+	'Operating System :: POSIX :: Linux',
+	'Operating System :: Microsoft :: Windows :: Windows 10',
+	'Operating System :: MacOS',
+	'Topic :: Scientific/Engineering :: Image Processing', 
+	'Programming Language :: Python :: 3.8',
+	'Programming Language :: Python :: 3.10'
+    ]
+
+
+
+[tool.poetry.dependencies]
+python = "^3.8"
+numpy = "^1.22.3"
+matplotlib = "^3.5.1"
+scipy = "^1.9.2"
+opencv-contrib-python = "^4.5.5.64"
+pynumdiff = "^0.1.2"
+cvxopt = "^1.3.0"
+cvxpy = "^1.2.0"
+pandas = "^1.4.2"
+
+[tool.poetry.scripts]
+motiontracker = "MotionTrackerBeta.main:MotionTracker"
+MotionTrackerBeta = "MotionTrackerBeta.main:MotionTracker"
+motiontrackerbeta = "MotionTrackerBeta.main:MotionTracker"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
