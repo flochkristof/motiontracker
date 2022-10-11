@@ -1391,6 +1391,8 @@ class VideoWidget(QWidget):
         self.ForwardBTN.setEnabled(True)
         self.BackwardBTN.setEnabled(True)
 
+        self.setFocus() # exits from lineedit
+
         # reload frame
         self.ReloadCurrentFrame()
 
@@ -1753,6 +1755,9 @@ class VideoWidget(QWidget):
             self.VidLBL.release.disconnect()
         except:
             pass
+        
+        # reset focus
+        self.setFocus()
 
         # reaload frame
         self.ReloadCurrentFrame()
