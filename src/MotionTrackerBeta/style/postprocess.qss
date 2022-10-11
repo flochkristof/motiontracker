@@ -123,11 +123,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
     border-top-right-radius: 5px; /* same radius as the QComboBox */
     border-bottom-right-radius: 5px;
 }
-
+/*
 .QComboBox::down-arrow {
     image: url("images/dropdown.png");
 }
-
+*/
 .QComboBox::down-arrow:on { /* shift the arrow when popup is open */
     top: 1px;
     left: 1px;

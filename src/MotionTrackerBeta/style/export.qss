@@ -51,7 +51,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 }
 
 .QCheckBox::indicator:checked {
-    image: url("images/tick.png")
+    background-color: #cecece;
 }
 
 

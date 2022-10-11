@@ -207,7 +207,7 @@ QCheckBox::indicator
 }
 
 .QCheckBox::indicator:checked {
-    image: url("images/tick.png")
+    background-color: #cecece;
 }
 
 .QGroupBox::indicator {
@@ -219,7 +219,7 @@ QCheckBox::indicator
 }
 
 .QGroupBox::indicator:checked {
-    image: url("images/tick.png")
+    background-color: #cecece;
 }
 
 .QComboBox {
@@ -262,10 +262,10 @@ QCheckBox::indicator
     border-top-right-radius: 5px; /* same radius as the QComboBox */
     border-bottom-right-radius: 5px;
 }
-
+/*
 .QComboBox::down-arrow {
-    image: url("images/dropdown.png");
-}
+    image: url(":/images/dropdown.png");
+}*/
 
 .QComboBox::down-arrow:on { /* shift the arrow when popup is open */
     top: 1px;
