@@ -50,7 +50,7 @@ $ MotionTrackerBeta
 - After successfull installation the software is accessible under the name `Motion Tracker Beta`
 ###
 # Usage
-For a detailed guide about the software check out the [documentation](docs/DOCUMENTATION.pdf).
+For a detailed guide about the software check out the [documentation](docs/DOCUMENTATION.pdf). A video that intorduces the main features and functions of the software is also available [online](https://www.youtube.com/watch?v=q3eWOA0FEmk).
 # License
 Motion Tracker Beta is released under the `GNU General Public License v3.0`.
 # Author
