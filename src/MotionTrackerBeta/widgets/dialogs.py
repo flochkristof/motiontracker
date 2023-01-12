@@ -46,6 +46,7 @@ from MotionTrackerBeta.functions.helper import *
 from MotionTrackerBeta.classes.classes import *
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg, NavigationToolbar2QT
 from matplotlib.figure import Figure
+import matplotlib.pyplot as plt
 import os
 
 
@@ -1483,9 +1484,17 @@ class PlotDialog(QWidget):
         ax.clear()
 
         # plot data
-        df.plot(kind="line", x=0, ax=ax)
+        df.plot(kind="line", x=0, ax=ax, fontsize=12)
         ax.set_ylabel(unit)
-        ax.set_title(title)
+        #ax.set_title(title)
+
+        ax.xaxis.label.set_size(16)
+        ax.yaxis.label.set_size(16)
+        map(lambda x: x.set_fontsize(14),ax.get_xticklabels()) 
+        map(lambda x: x.set_fontsize(14),ax.get_yticklabels())
+        
+        plt.setp(ax.get_legend().get_texts(), fontsize='14')
+
 
         # draw to qt
         self.canvas = FigureCanvasQTAgg(self.figure)

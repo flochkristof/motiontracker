@@ -27,31 +27,31 @@ def rad2deg_(data):
     return data
 
 
-def pix2mm(data, pix_per_mm):
+def pix2mm(data, mm_per_pix):
     """Using the ruler it coverts the data to mm"""
 
-    if pix_per_mm is not None:
+    if mm_per_pix is not None:
         if data.shape[1] > 1:
             data[:, [1, data.shape[1] - 1]] = (
-                pix_per_mm * data[:, [1, data.shape[1] - 1]]
+                mm_per_pix * data[:, [1, data.shape[1] - 1]]
             )
         else:
-            data[:, 1] = data[:, 1] * pix_per_mm
+            data[:, 1] = data[:, 1] * mm_per_pix
         return data
     else:
         return None
 
 
-def pix2m(data, pix_per_mm):
+def pix2m(data, mm_per_pix):
     """Using the ruler it coverts the data to m"""
 
-    if pix_per_mm is not None:
+    if mm_per_pix is not None:
         if data.shape[1] > 1:
             data[:, [1, data.shape[1] - 1]] = (
-                pix_per_mm / 1000 * data[:, [1, data.shape[1] - 1]]
+                mm_per_pix/1000 * data[:, [1, data.shape[1] - 1]]
             )
         else:
-            data[:, 1] = data[:, 1] * pix_per_mm / 1000
+            data[:, 1] = data[:, 1] * mm_per_pix/1000
         return data
     else:
         return None

@@ -2198,9 +2198,9 @@ class VideoWidget(QWidget):
                         cols.append(obj.name + " - Y")
                         exp_ok = True
                     elif parameters["ax"] == "BOTH":
-                        data[:, i + 1] = obj.position[:, 0]
+                        data[:, i*2 + 1] = obj.position[:, 0]
                         cols.append(obj.name + " - X")
-                        data[:, i + 2] = -obj.position[:, 1]  # CHANGE IT WHEN READY
+                        data[:, i*2 + 2] = -obj.position[:, 1]
                         cols.append(obj.name + " - Y")
                         exp_ok = True
                     title = "Position"
@@ -2213,13 +2213,13 @@ class VideoWidget(QWidget):
                         cols.append(obj.name + " - X")
                         exp_ok = True
                     elif parameters["ax"] == "YT":
-                        data[:, i + 1] = -obj.velocity[:, 1]  # CHANGE IT WHEN READY
+                        data[:, i + 1] = -obj.velocity[:, 1] 
                         cols.append(obj.name + " - Y")
                         exp_ok = True
                     elif parameters["ax"] == "BOTH":
-                        data[:, i + 1] = obj.velocity[:, 0]
+                        data[:, i*2 + 1] = obj.velocity[:, 0]
                         cols.append(obj.name + " - X")
-                        data[:, i + 2] = -obj.velocity[:, 1]  # CHANGE IT WHEN READY
+                        data[:, i*2 + 2] = -obj.velocity[:, 1]
                         cols.append(obj.name + " - Y")
                         exp_ok = True
                     title = "Velocity"
@@ -2232,13 +2232,13 @@ class VideoWidget(QWidget):
                         cols.append(obj.name + " - X")
                         exp_ok = True
                     elif parameters["ax"] == "YT":
-                        data[:, i + 1] = -obj.acceleration[:, 1]  # CHANGE IT WHEN READY
+                        data[:, i + 1] = -obj.acceleration[:, 1]
                         cols.append(obj.name + " - Y")
                         exp_ok = True
                     elif parameters["ax"] == "BOTH":
-                        data[:, i + 1] = obj.acceleration[:, 0]
+                        data[:, i*2 + 1] = obj.acceleration[:, 0]
                         cols.append(obj.name + " - X")
-                        data[:, i + 2] = -obj.acceleration[:, 1]  # CHANGE IT WHEN READY
+                        data[:, i*2 + 2] = -obj.acceleration[:, 1] 
                         cols.append(obj.name + " - Y")
                         exp_ok = True
                     title = "Acceletration"

@@ -142,9 +142,11 @@ class Ruler:
             and self.y1 is not None
             and self.mm is not None
         ):
-            pix = math.sqrt(
-                math.pow(self.x1 - self.x0, 2) + math.pow(self.y1 - self.y0, 2)
-            )
+            #pix = math.sqrt(
+            #    math.pow(self.x1 - self.x0, 2) + math.pow(self.y1 - self.y0, 2)
+            #)
+
+            pix=math.sqrt((self.x1 - self.x0)**2+(self.y1-self.y0)**2)
             self.mm_per_pix = self.mm / pix
             self.rdy = True
 
