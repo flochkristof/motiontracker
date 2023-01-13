@@ -10,3 +10,5 @@ player.py
 debug.log
 dist
 build
+output
+complier.iss

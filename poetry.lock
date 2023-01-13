@@ -189,17 +189,44 @@ docs = ["furo", "olefile", "sphinx (>=2.4)", "sphinx-copybutton", "sphinx-issues
 tests = ["check-manifest", "coverage", "defusedxml", "markdown2", "olefile", "packaging", "pyroma", "pytest", "pytest-cov", "pytest-timeout"]
 
 [[package]]
+name = "pychebfun"
+version = "0.1.1"
+description = "Python Chebyshev Functions"
+category = "main"
+optional = false
+python-versions = "*"
+develop = false
+
+[package.dependencies]
+matplotlib = "*"
+numpy = "*"
+scipy = "*"
+
+[package.source]
+type = "git"
+url = "https://github.com/flochkristof/pychebfun.git"
+reference = "HEAD"
+resolved_reference = "dc975cdf96105104b453fa9800b29cd67086f01f"
+
+[[package]]
 name = "pynumdiff"
 version = "0.1.2"
 description = "pynumdiff: numerical derivatives in python"
 category = "main"
 optional = false
 python-versions = "*"
+develop = false
 
 [package.dependencies]
 matplotlib = "*"
 numpy = "*"
 scipy = "*"
+
+[package.source]
+type = "git"
+url = "https://github.com/flochkristof/PyNumDiff.git"
+reference = "HEAD"
+resolved_reference = "a39e79f808ad15ac34f0043241ced07b4c30bf03"
 
 [[package]]
 name = "pyparsing"
@@ -357,7 +384,7 @@ python-versions = ">=3.7"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "b6843dec7f6c8c3dbf008834f6ef0896a1986d2a7878104979bf91ebbc02c0ff"
+content-hash = "ab09d6423b1f39eef3fd103235a1ab7d5166af2187ae0897aa30f15c7079dc16"
 
 [metadata.files]
 contourpy = [
@@ -762,10 +789,8 @@ pillow = [
     {file = "Pillow-9.3.0-pp38-pypy38_pp73-win_amd64.whl", hash = "sha256:073adb2ae23431d3b9bcbcff3fe698b62ed47211d0716b067385538a1b0f28b8"},
     {file = "Pillow-9.3.0.tar.gz", hash = "sha256:c935a22a557a560108d780f9a0fc426dd7459940dc54faa49d83249c8d3e760f"},
 ]
-pynumdiff = [
-    {file = "pynumdiff-0.1.2-py3-none-any.whl", hash = "sha256:c4a68fcd42c5a43a5f04b00d51cfd401d3d3b944278f75483b2b2b99df716092"},
-    {file = "pynumdiff-0.1.2.tar.gz", hash = "sha256:e6170144c172bb154eaaa28b008daaa184cf73397576f43671f449912ad2df30"},
-]
+pychebfun = []
+pynumdiff = []
 pyparsing = [
     {file = "pyparsing-3.0.9-py3-none-any.whl", hash = "sha256:5026bae9a10eeaefb61dab2f09052b9f4307d44aee4eda64b309723d8d206bbc"},
     {file = "pyparsing-3.0.9.tar.gz", hash = "sha256:2b020ecf7d21b687f219b71ecad3631f644a47f01403fa1d1036b0c6416d70fb"},

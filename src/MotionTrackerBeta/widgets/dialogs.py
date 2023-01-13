@@ -50,7 +50,7 @@ import matplotlib.pyplot as plt
 import os
 
 
-MODE=True # disables/ enables the optimization based differentiation methods
+MODE=False # disables/ enables the optimization based differentiation methods
 # True: python environment
 # False: complied exe
 

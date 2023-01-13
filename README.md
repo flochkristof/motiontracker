@@ -38,7 +38,6 @@ $ pip install <path-to-wheel-file.whl>
 ```
 $ MotionTrackerBeta
 ```
-> Note: If you would like to use Chebysev filters in the post processing of the tracked data, run `$ pip install pychebfun`!
 
 ### Download binaries (Windows)
 - Download the binaries from the latest release
