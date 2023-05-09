@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "MotionTrackerBeta"
-version = "0.1.5"
+version = "0.1.6"
 description = "a GUI based, open-source motion tracking application"
 authors = ["Kristof Floch <kristof.floch@gmail.com>"]
 maintainers = ["Kristof Floch <kristof.floch@gmail.com>"]
@@ -37,9 +37,9 @@ opencv-contrib-python-headless = "^4.5.5.64"
 cvxopt = "^1.3.0"
 cvxpy = "^1.2.0"
 pandas = "^1.4.2"
-#pynumdiff = "^0.1.2" 
-pynumdiff = {git = "https://github.com/flochkristof/PyNumDiff.git"}
-pychebfun = {git = "https://github.com/flochkristof/pychebfun.git"}
+pynumdiff = "^0.1.2" 
+#pynumdiff = {git = "https://github.com/flochkristof/PyNumDiff.git"}
+#pychebfun = {git = "https://github.com/flochkristof/pychebfun.git"}
 openpyxl = "^3.0.10"
 
 [tool.poetry.scripts]

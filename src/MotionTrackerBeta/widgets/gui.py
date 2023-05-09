@@ -2317,6 +2317,7 @@ class VideoWidget(QWidget):
         elif parameters["out"] == "EXP":
             unit = get_unit_readable(parameters)
             cols = [f"{item} ({unit})" for item in cols]
+            cols[0]="Time (s)"
             df = pd.DataFrame(data, columns=cols)
             save_name = QFileDialog.getSaveFileName(
                 self,
