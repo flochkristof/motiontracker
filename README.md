@@ -68,8 +68,24 @@ $ MotionTrackerBeta
 ###
 # Usage
 For a detailed guide about the software check out the [documentation](docs/DOCUMENTATION.pdf). A video that intorduces the main features and functions of the software is also available [online](https://www.youtube.com/watch?v=q3eWOA0FEmk).
-# License
+# License & citation
 Motion Tracker Beta is released under the `GNU General Public License v3.0`.
+
+If you found our software useful in your research, please cite our article:
+```
+@article{MotionTrackerBeta2023,
+title = {Motion Tracker Beta: A GUI based open-source motion tracking application},
+journal = {SoftwareX},
+volume = {23},
+pages = {101424},
+year = {2023},
+issn = {2352-7110},
+doi = {https://doi.org/10.1016/j.softx.2023.101424},
+url = {https://www.sciencedirect.com/science/article/pii/S2352711023001206},
+author = {Kristóf Floch and Attila Kossa}
+}
+```
+
 # Author
 The software has been developed by Kristof Floch at the Department of Applied Mechanics, Faculty of Mechanical Engineering, Budapest University of Technology and Economics.
 ### Contact
