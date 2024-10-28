@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "MotionTrackerBeta"
-version = "0.1.6"
+version = "0.1.7"
 description = "a GUI based, open-source motion tracking application"
 authors = ["Kristof Floch <kristof.floch@gmail.com>"]
 maintainers = ["Kristof Floch <kristof.floch@gmail.com>"]
