@@ -1829,8 +1829,9 @@ class VideoWidget(QWidget):
 
         # retrieve and store
         x1, y1 = self.relative_to_cv(x, y)
-        self.roi_rect = (self.roi_rect[0], self.roi_rect[1], x1, y1)
 
+        self.roi_rect = (self.roi_rect[0], self.roi_rect[1], x1, y1)
+        
         # rload frame
         self.ReloadCurrentFrame()
 
@@ -2065,6 +2066,9 @@ class VideoWidget(QWidget):
         # remove ruer cancel current object
         self.removeRuler()
         self.cancelObject()
+
+        # remove roi
+        self.delRoi()
 
         # clear objects
         self.ObjectLWG.clear()

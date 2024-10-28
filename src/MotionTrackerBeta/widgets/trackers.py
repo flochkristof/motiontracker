@@ -251,7 +251,7 @@ class TrackingThreadV2(QThread):
         if roi_rect is None:
             self.roi_rect = (0, 0)
         else:
-            self.roi_rect = roi_rect
+            self.roi_rect = roi_rect # in x0, y1, x1, y1 format
 
         # call parent function
         super(TrackingThreadV2, self).__init__()

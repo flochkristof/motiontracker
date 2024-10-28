@@ -81,7 +81,12 @@ def crop_frame(frame, x_offset, y_offset, zoom):
 
 def crop_roi(frame, rect):
     """Crop frame with the ROI rectangle"""
-    return frame[rect[1] : rect[3], rect[0] : rect[2]]
+
+    x0 = min(rect[0], rect[2])
+    y0 = min(rect[1], rect[3])
+    x1 = max(rect[0], rect[2])
+    y1 = max(rect[1], rect[3])
+    return frame[y0 : y1, x0 : x1]
 
 
 def rect2cropped(rectangle, roi_rect):
