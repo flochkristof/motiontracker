@@ -20,10 +20,7 @@ import numpy as np
 def rad2deg_(data):
     """Converts the data in the array from radian to edgrees"""
 
-    if data.shape[1] > 1:
-        data[:, [1, data.shape[1] - 1]] = 180 / np.pi * data[:, [1, data.shape[1] - 1]]
-    else:
-        data[:, 1] = data[:, 1] * 180 / np.pi
+    data[:, 1:] = 180 / np.pi * data[:, 1:]
     return data
 
 
@@ -31,12 +28,7 @@ def pix2mm(data, mm_per_pix):
     """Using the ruler it coverts the data to mm"""
 
     if mm_per_pix is not None:
-        if data.shape[1] > 1:
-            data[:, [1, data.shape[1] - 1]] = (
-                mm_per_pix * data[:, [1, data.shape[1] - 1]]
-            )
-        else:
-            data[:, 1] = data[:, 1] * mm_per_pix
+        data[:, 1:] = mm_per_pix * data[:, 1:]
         return data
     else:
         return None
@@ -46,12 +38,7 @@ def pix2m(data, mm_per_pix):
     """Using the ruler it coverts the data to m"""
 
     if mm_per_pix is not None:
-        if data.shape[1] > 1:
-            data[:, [1, data.shape[1] - 1]] = (
-                mm_per_pix/1000 * data[:, [1, data.shape[1] - 1]]
-            )
-        else:
-            data[:, 1] = data[:, 1] * mm_per_pix/1000
+        data[:, 1:] = mm_per_pix / 1000 * data[:, 1:]
         return data
     else:
         return None
