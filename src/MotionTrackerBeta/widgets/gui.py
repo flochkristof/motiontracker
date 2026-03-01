@@ -873,18 +873,20 @@ class VideoWidget(QWidget):
                         frame = cv2.drawMarker(
                             frame, (x, y), (0, 0, 255), 0, markerSize=self.marker_size, thickness=2
                         )
-                        x0, y0, x1, y1 = tracker2gui(obj.rectangle)
-                        frame = cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 0, 0), 2)
-                        cv2.putText(
-                            frame,
-                            obj.name,
-                            (x0, y0 - 5),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.5,
-                            (255, 0, 0),
-                            1,
-                            cv2.LINE_AA,
-                        )
+                        # Only draw rectangle if it was manually set (not auto-generated)
+                        if obj.rectangle_visible:
+                            x0, y0, x1, y1 = tracker2gui(obj.rectangle)
+                            frame = cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 0, 0), 2)
+                            cv2.putText(
+                                frame,
+                                obj.name,
+                                (x0, y0 - 5),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                0.5,
+                                (255, 0, 0),
+                                1,
+                                cv2.LINE_AA,
+                            )
                 # Display object selection point
                 if self.point_tmp is not None:
                     x, y = self.point_tmp
@@ -1313,12 +1315,17 @@ class VideoWidget(QWidget):
         if self.point_tmp is None:
             self.showWarningMessage("No point selected!")
             return
+
+        # If no region selected, auto-create a default rectangle (50x50 centered on point)
+        rectangle_visible = True
         if self.rect_tmp is None:
-            self.showWarningMessage("No region selected!")
-            return
+            px, py = self.point_tmp
+            half_size = 25
+            self.rect_tmp = (px - half_size, py - half_size, px + half_size, py + half_size)
+            rectangle_visible = False  # Don't show the auto-generated rectangle
 
         # Save object
-        M = Motion(name, self.point_tmp, gui2tracker(self.rect_tmp))
+        M = Motion(name, self.point_tmp, gui2tracker(self.rect_tmp), rectangle_visible=rectangle_visible)
         self.objects_to_track.append(M)
 
         # delete temp buffer

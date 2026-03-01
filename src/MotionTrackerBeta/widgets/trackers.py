@@ -158,7 +158,7 @@ class TrackingThread(QThread):
                 try:
                     ret, roi_box = tracker.update(frame)
                 except Exception as e:
-                    self.error_occured.emit(f"Tracking failed!\n{e}")
+                    self.error_occured.emit(f"Tracking failed!\n{e}\n\nTry adding or changing the rectangle around the point, it might improve tracking.")
                     self.is_running = False
                     break
 
@@ -194,7 +194,7 @@ class TrackingThread(QThread):
                 else:
                     # handle errors
                     self.error_occured.emit(
-                        "Tracking failed!\n Tracker returned with failure!"
+                        "Tracking failed!\n Tracker returned with failure!\n\nTry adding or changing the rectangle around the point, it might improve tracking."
                     )
                     self.is_running = False
 
@@ -351,7 +351,7 @@ class TrackingThreadV2(QThread):
                 try:
                     ret, roi_box = trackers[i].update(frame)
                 except Exception as e:
-                    self.error_occured.emit(f"Tracking failed!\n{e}")
+                    self.error_occured.emit(f"Tracking failed!\n{e}\n\nTry adding or changing the rectangle around the point, it might improve tracking.")
                     self.is_running = False
                     return
 
@@ -386,7 +386,7 @@ class TrackingThreadV2(QThread):
                 else:
                     # handle errors
                     self.error_occured.emit(
-                        "Tracking failed!\n Tracker returned with failure!"
+                        "Tracking failed!\n Tracker returned with failure!\n\nTry adding or changing the rectangle around the point, it might improve tracking."
                     )
                     self.is_running = False
                     return

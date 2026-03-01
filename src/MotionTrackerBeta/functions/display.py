@@ -85,7 +85,8 @@ def display_objects(
                                 2,
                             )
 
-                if box_bool:
+                # Only draw rectangle if it was manually set (not auto-generated)
+                if box_bool and getattr(obj, 'rectangle_visible', True):
                     x0, y0, x1, y1 = tracker2gui(
                         obj.rectangle_path[int(pos - section_start + 1)]
                     )

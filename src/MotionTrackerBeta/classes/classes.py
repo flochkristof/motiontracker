@@ -21,7 +21,7 @@ import numpy as np
 class Motion:
     """Class that stores every detail of the objects being tracked"""
 
-    def __init__(self, name, point, rectangle, visible=True):
+    def __init__(self, name, point, rectangle, visible=True, rectangle_visible=True):
         # identification
         self.name = name
 
@@ -29,6 +29,7 @@ class Motion:
         self.point = point
         self.rectangle = rectangle
         self.visible = visible
+        self.rectangle_visible = rectangle_visible  # False if user doesn't set one
 
         # output, raw data
         self.rectangle_path = []
