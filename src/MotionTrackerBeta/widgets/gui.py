@@ -111,6 +111,12 @@ class VideoWidget(QWidget):
         self.OpenBTN.clicked.connect(self.openNewFile)
         self.OpenBTN.setObjectName("openBTN")
 
+        # Remove video button
+        self.RemoveVideoBTN = QPushButton("Remove Video")
+        self.RemoveVideoBTN.clicked.connect(self.closeVideo)
+        self.RemoveVideoBTN.setObjectName("removeVideoBTN")
+        self.RemoveVideoBTN.setVisible(False)
+
         # Video properties
         self.FileNameLBL = QLabel()
         self.FileNameLBL.setWordWrap(True)
@@ -251,11 +257,11 @@ class VideoWidget(QWidget):
         self.StartPauseBTN.setMinimumSize(QSize(40, 40))
         self.StartPauseBTN.clicked.connect(self.StartPauseVideo)
 
-        # Stops the video, releases the camera, resets everything
+        # Stops the video playback
         StopBTN = QPushButton()
         StopBTN.setIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/stop.svg"))
         StopBTN.setMinimumSize(QSize(40, 40))
-        StopBTN.clicked.connect(self.closeVideo)
+        StopBTN.clicked.connect(self.stopVideo)
 
         # Jumping forward in the video
         self.ForwardBTN = QPushButton()
@@ -586,6 +592,7 @@ class VideoWidget(QWidget):
         # LSideLayout
         LSideLayout = QVBoxLayout()
         LSideLayout.addWidget(self.OpenBTN)
+        LSideLayout.addWidget(self.RemoveVideoBTN)
         LSideLayout.addWidget(self.PropGB)
         LSideLayout.addWidget(self.TrackingSectionGB)
         LSideLayout.addWidget(self.ObjectsGB)
@@ -640,13 +647,16 @@ class VideoWidget(QWidget):
 
     def openNewFile(self):
         """Opens a new video file"""
+        settings = QSettings("MotionTracker", "MotionTracker")
+        last_dir = settings.value("last_video_dir", "")
         filename = QFileDialog.getOpenFileName(
             self,
             "Open Video",
-            "user/Documents/",
+            last_dir,
             "MP4 file (*.mp4);;MOV file (*.mov);;AVI file (*.avi);; MKV file (*.mkv)",
         )[0]
         if filename != "":
+            settings.setValue("last_video_dir", os.path.dirname(filename))
             self.filename = filename
             self.openVideo()
 
@@ -673,15 +683,43 @@ class VideoWidget(QWidget):
         # reset any previous existing data
         self.resetAll()
 
+        # set default start/stop to beginning and end of video
+        self.section_start = 1
+        self.section_stop = self.num_of_frames
+        self.SectionStartLBL.setText(
+            f"Start: {self.time_to_display(self.section_start)}"
+        )
+        self.SectionStopLBL.setText(
+            f"Stop: {self.time_to_display(self.section_stop)}"
+        )
+        self.setresetStartBTN.setText("Clear")
+        self.setresetStopBTN.setText("Clear")
+
         # Reorganize layout
         self.PropGB.setVisible(True)
         self.OpenBTN.setVisible(False)
+        self.RemoveVideoBTN.setVisible(True)
 
         # Connect to timer and zoom
         self.VidLBL.wheel.connect(self.changeZoom)
         self.timer.timeout.connect(self.nextFrame)
 
         # load first frame
+        self.nextFrame()
+
+    def stopVideo(self):
+        """Stops playback and jumps to the beginning"""
+        if self.camera is None:
+            return
+
+        # Stop the timer and reset play button state
+        self.timer.stop()
+        self.StartPauseBTN.setChecked(False)
+        self.StartPauseBTN.setIcon(QIcon(os.path.dirname(os.path.dirname(__file__))+"/images/play.svg"))
+
+        # Jump to the start of the tracking section (or frame 0)
+        start = self.section_start if self.section_start else 0
+        self.camera.set(cv2.CAP_PROP_POS_FRAMES, max(start - 1, 0))
         self.nextFrame()
 
     def closeVideo(self):
@@ -709,6 +747,7 @@ class VideoWidget(QWidget):
 
         # resetting data
         self.OpenBTN.setVisible(True)
+        self.RemoveVideoBTN.setVisible(False)
         self.resetAll()
 
     def StartPauseVideo(self):
