@@ -21,26 +21,32 @@ classifiers=[
 	'Operating System :: Microsoft :: Windows :: Windows 10',
 	'Operating System :: MacOS',
 	'Topic :: Scientific/Engineering :: Image Processing', 
-	'Programming Language :: Python :: 3.8',
-	'Programming Language :: Python :: 3.10'
+	'Programming Language :: Python :: 3.12'
     ]
 
 
 
 [tool.poetry.dependencies]
-python = "^3.8"
-PyQt5 ="^5.15.2"
-numpy = "^1.22.3"
-matplotlib = "^3.5.1"
-scipy = "^1.9.2"
-opencv-contrib-python-headless = "^4.5.5.64"
-cvxopt = "^1.3.0"
-cvxpy = "^1.2.0"
-pandas = "^1.4.2"
-pynumdiff = "^0.1.2" 
+python = "~3.12"
+PyQt5 =">=5.15.9"
+PyQt5-Qt5 = ">=5.15.2"
+numpy = ">=1.26,<2"
+matplotlib = ">=3.8"
+scipy = ">=1.12"
+opencv-contrib-python-headless = ">=4.5.5.64"
+cvxopt = ">=1.3.2"
+cvxpy = ">=1.4.0"
+pandas = ">=2.0"
+pynumdiff = ">=0.1.2"
+tqdm = ">=4.60"
 #pynumdiff = {git = "https://github.com/flochkristof/PyNumDiff.git"}
 #pychebfun = {git = "https://github.com/flochkristof/pychebfun.git"}
-openpyxl = "^3.0.10"
+openpyxl = ">=3.0.10"
+Pillow = ">=10.0"
+
+[tool.poetry.group.build.dependencies]
+pyinstaller = ">=6.6.0"
+setuptools = "<70"  # >=70 adds jaraco namespace packages that PyInstaller can't bundle
 
 [tool.poetry.scripts]
 motiontracker = "MotionTrackerBeta.main:MotionTracker"
